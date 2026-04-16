@@ -1,0 +1,7 @@
+0xe85	getConfig(bytes32)
+0x156a	name()
+0x17c2	getConfig(bytes32)
+0x18d1	getConfig(bytes32)
+0x16a7S0x4ec	balanceOf(address)
+0x1effS0x1d32S0x1a19	transferFrom(address,address,uint256)
+0x1effS0x1e03S0x1cb8	transfer(address,uint256)

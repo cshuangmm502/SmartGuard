@@ -1,0 +1,40 @@
+# Python virtual environment
+venv/
+.venv/
+
+# PyCharm / IDE
+.idea/
+*.iml
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Environment / secrets
+.env
+.env.*
+*.secret
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test / coverage / cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Temporary files
+*.log
+tmp/
+temp/
