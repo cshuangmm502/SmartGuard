@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 
 from event_analysis import analyze_events, convert_events_to_func
 from tac_analysis import extract_all_events
-from tac_analyze_scripts.GeminiRequest import classify_event_with_agent
 from tac_analyze_scripts.help_function import output_Graph_to_file
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -16,8 +15,8 @@ CONTRACT_NAME = "TokenMapped"
 CONTRACT_ARTIFACTS_PATH = OUT_DIR.parent
 
 
-def build_global_cfg(df_blockEdge, df_functionCall, df_functionReturn, df_publicFuncs, events):
-    emitting_events, informing_events = analyze_events(events)
+def build_global_cfg(artifacts_path, df_blockEdge, df_functionCall, df_functionReturn, df_publicFuncs, events):
+    emitting_events, informing_events = analyze_events(events, artifacts_path)
     informing_blocks = informing_events['block'].tolist()
     emitting_blocks = emitting_events['block'].tolist()
 
@@ -114,7 +113,7 @@ def build_global_cfg(df_blockEdge, df_functionCall, df_functionReturn, df_public
     return G
 
 
-def build_fcg(df_functionCall, df_block_in_func, events):
+def build_fcg(artifacts_path, df_functionCall, df_block_in_func, events):
 
     # print("🚀 正在加载 Gigahorse 提取的 TAC 数据库...")
     functioncalls = df_functionCall
@@ -136,7 +135,7 @@ def build_fcg(df_functionCall, df_block_in_func, events):
         if caller_func != "0" and callee_func != "0" and caller_func != callee_func:
             Call_G.add_edge(caller_func, callee_func)
 
-    emitting_events, informing_events = analyze_events(events)
+    emitting_events, informing_events = analyze_events(events, artifacts_path)
     # 处理 Deposit (Emitting) -> Relayer
     emitting_funcs, emit_sign = convert_events_to_func(block_func_relations, emitting_events)
     # 去重
@@ -619,6 +618,212 @@ def extract_function_args_to_jumpi(DDG, df_defines, df_publicArgs, df_opcodes, d
         print(f"... 已隐藏后续 {path_count - debug_limit} 条路径的打印 ...\n")
 
     return ARGS_CHECK_BLOCKS
+
+
+def extract_arg_state_rendezvous(DDG, df_def, df_pub_args, df_opcode, df_block):
+    """
+    终极语义提取：寻找 SLOAD 和 Args(参数) 数据流交汇的比较指令，并确认其流入 JUMPI。
+    """
+    # 1. 基础映射准备
+    df_opcode['opcode'] = df_opcode['opcode'].astype(str).str.strip().str.upper()
+    opcode_dict = df_opcode.set_index('stmt')['opcode'].to_dict()
+    df_block_dict = df_block.set_index('stmt')['block'].to_dict()
+
+    # 2. 提取 SLOAD 起点
+    sload_stmts = set(df_opcode[df_opcode['opcode'] == 'SLOAD']['stmt'])
+    valid_sloads = [s for s in sload_stmts if s in DDG]
+
+    # 3. 提取 Args 起点 (带有高级语义)
+    args_sources_df = pd.merge(df_pub_args, df_def, on='var')
+    valid_args = []
+    arg_to_info = {}
+    for _, row in args_sources_df.iterrows():
+        stmt = row['stmt']
+        if stmt in DDG:
+            valid_args.append(stmt)
+            # 兼容之前合并产生的 index_x
+            arg_num = row.get('index_x', row.get('index', '?'))
+            arg_to_info[stmt] = f"函数[{row['func_entry_block']}] 的参数[{arg_num}]"
+
+    # 4. 定义目标：二元比较指令 和 JUMPI
+    # 注意：ISZERO 是单元的，通常在比较之后，所以真正的交汇点一定是下面这些二元操作符
+    BINARY_COMPARES = {'EQ', 'LT', 'GT', 'SLT', 'SGT'}
+    jumpi_stmts = set(df_opcode[df_opcode['opcode'] == 'JUMPI']['stmt'])
+    valid_jumpis = set([s for s in jumpi_stmts if s in DDG])
+
+    print(f"[*] 开始进行数据流交汇分析 (Rendezvous Analysis)...")
+    print(f"    - SLOAD 起点: {len(valid_sloads)} 个")
+    print(f"    - Args  起点: {len(valid_args)} 个\n")
+
+    # 5. 分别计算 SLOAD 和 Args 能到达的比较指令
+    sload_to_compares = {}  # 比较指令 -> 哪些 SLOAD 到达了它
+    for sload in valid_sloads:
+        for desc in nx.descendants(DDG, sload):
+            if opcode_dict.get(desc) in BINARY_COMPARES:
+                sload_to_compares.setdefault(desc, set()).add(sload)
+
+    args_to_compares = {}  # 比较指令 -> 哪些 Args 到达了它
+    for arg in valid_args:
+        for desc in nx.descendants(DDG, arg):
+            if opcode_dict.get(desc) in BINARY_COMPARES:
+                args_to_compares.setdefault(desc, set()).add(arg)
+
+    # ================= 核心：寻找交汇点 (Intersection) =================
+    # 只要一个比较指令既在 sload_to_compares 里，又在 args_to_compares 里，它就是我们要找的！
+    shared_compares = set(sload_to_compares.keys()).intersection(set(args_to_compares.keys()))
+
+    true_auth_blocks = set()
+    found_count = 0
+
+    for comp_stmt in shared_compares:
+        # 验证这个交汇点是否最终流入了 JUMPI (防止死代码或无意义的比较)
+        reachable_from_comp = nx.descendants(DDG, comp_stmt)
+        hit_jumpis = reachable_from_comp.intersection(valid_jumpis)
+
+        if not hit_jumpis:
+            continue  # 没有流入 JUMPI，说明不是条件分支，跳过
+
+        # 记录成功的 Block
+        for j in hit_jumpis:
+            if j in df_block_dict:
+                true_auth_blocks.add(df_block_dict[j])
+
+        found_count += 1
+        comp_op = opcode_dict.get(comp_stmt)
+
+        # 获取具体的来源信息用于打印
+        sloads_involved = sload_to_compares[comp_stmt]
+        args_involved = args_to_compares[comp_stmt]
+
+        arg_descriptions = [arg_to_info.get(a, "未知参数") for a in args_involved]
+        sload_descriptions = [f"[SLOAD]({s})" for s in sloads_involved]
+        jumpi_descriptions = [f"[JUMPI]({j})" for j in hit_jumpis]
+
+        # 打印绝美的高级语义
+        print(f"🎯 完美安全校验 (参数 vs 状态) #{found_count}:")
+        print(f"  📌 业务逻辑: 正在将 {', '.join(arg_descriptions)} ")
+        print(f"               与 {', '.join(sload_descriptions)} 进行比较！")
+        print(f"  ⚔️ 交汇指令: [{comp_op}]({comp_stmt})")
+        print(f"  🛡️ 守护区块: 跳转判断 {', '.join(jumpi_descriptions)}")
+        print("-" * 70)
+
+    print(f"\n[+] 交汇分析完毕！共发现 {found_count} 个极高置信度的业务逻辑校验点。")
+    return true_auth_blocks
+
+
+def extract_caller_state_rendezvous(DDG, df_opcode, df_block):
+    """
+    经典权限提取：寻找 SLOAD 和 CALLER 数据流交汇的比较指令，并确认其流入 JUMPI。
+    (完美捕获 msg.sender == owner 模式)
+    """
+    # 1. 基础映射准备
+    # 确保 opcode 转为大写并去除了空白字符
+    df_opcode['opcode'] = df_opcode['opcode'].astype(str).str.strip().str.upper()
+    opcode_dict = df_opcode.set_index('stmt')['opcode'].to_dict()
+    df_block_dict = df_block.set_index('stmt')['block'].to_dict()
+
+    # 2. 提取 SLOAD 起点
+    sload_stmts = set(df_opcode[df_opcode['opcode'] == 'SLOAD']['stmt'])
+    valid_sloads = [s for s in sload_stmts if s in DDG]
+
+    # 3. 提取 CALLER / ORIGIN 起点
+    # 在有些恶意合约或特定业务中，也会用 tx.origin 进行鉴权
+    caller_stmts = set(df_opcode[df_opcode['opcode'].isin(['CALLER', 'ORIGIN'])]['stmt'])
+    valid_callers = [s for s in caller_stmts if s in DDG]
+
+    # 4. 定义目标：二元比较指令 和 JUMPI
+    # EQ (等于) 是权限校验中最常见的
+    BINARY_COMPARES = {'EQ', 'LT', 'GT', 'SLT', 'SGT'}
+    jumpi_stmts = set(df_opcode[df_opcode['opcode'] == 'JUMPI']['stmt'])
+    valid_jumpis = set([s for s in jumpi_stmts if s in DDG])
+
+    print(f"[*] 开始经典权限交汇分析 (msg.sender vs SLOAD) ...")
+    print(f"    - SLOAD  起点: {len(valid_sloads)} 个")
+    print(f"    - CALLER 起点: {len(valid_callers)} 个\n")
+
+    # 5. 分别计算 SLOAD 和 CALLER 能到达的比较指令
+    sload_to_compares = {}  # 比较指令 -> 哪些 SLOAD 到达了它
+    for sload in valid_sloads:
+        for desc in nx.descendants(DDG, sload):
+            if opcode_dict.get(desc) in BINARY_COMPARES:
+                sload_to_compares.setdefault(desc, set()).add(sload)
+
+    caller_to_compares = {}  # 比较指令 -> 哪些 CALLER 到达了它
+    for caller in valid_callers:
+        for desc in nx.descendants(DDG, caller):
+            if opcode_dict.get(desc) in BINARY_COMPARES:
+                caller_to_compares.setdefault(desc, set()).add(caller)
+
+    # ================= 核心：寻找交汇点 (Intersection) =================
+    # 只要一个比较指令既在 sload_to_compares 里，又在 caller_to_compares 里，它就是权限控制！
+    shared_compares = set(sload_to_compares.keys()).intersection(set(caller_to_compares.keys()))
+
+    true_auth_blocks = set()
+    found_count = 0
+
+    for comp_stmt in shared_compares:
+        # 验证这个交汇点是否最终流入了 JUMPI
+        reachable_from_comp = nx.descendants(DDG, comp_stmt)
+        hit_jumpis = reachable_from_comp.intersection(valid_jumpis)
+
+        if not hit_jumpis:
+            continue  # 死代码，跳过
+
+        # 记录成功的 Block
+        for j in hit_jumpis:
+            if j in df_block_dict:
+                true_auth_blocks.add(df_block_dict[j])
+
+        found_count += 1
+        comp_op = opcode_dict.get(comp_stmt)
+
+        # 获取具体的来源信息用于打印
+        sloads_involved = sload_to_compares[comp_stmt]
+        callers_involved = caller_to_compares[comp_stmt]
+
+        caller_descriptions = [f"[{opcode_dict.get(c)}]({c})" for c in callers_involved]
+        sload_descriptions = [f"[SLOAD]({s})" for s in sloads_involved]
+        jumpi_descriptions = [f"[JUMPI]({j})" for j in hit_jumpis]
+
+        # 打印直观的安全语义
+        print(f"👑 身份鉴权点 (CALLER vs 状态) #{found_count}:")
+        print(f"  📌 身份提取: {', '.join(caller_descriptions)}")
+        print(f"  📌 状态读取: {', '.join(sload_descriptions)}")
+        print(f"  ⚔️ 交汇比对: [{comp_op}]({comp_stmt})")
+        print(f"  🛡️ 守护区块: 跳转判断 {', '.join(jumpi_descriptions)}")
+        print("-" * 70)
+
+    print(f"\n[+] 身份鉴权提取完毕！共发现 {found_count} 个基于调用者的严格身份校验点。")
+
+    # === 补充：Mapping (白名单) 模式检查 ===
+    print("\n[*] 正在补充检查 Mapping 模式 (如 whitelist[msg.sender]) ...")
+
+    # CALLER 到 JUMPI 的所有路线
+    caller_to_jumpis = set()
+    for caller in valid_callers:
+        hit = nx.descendants(DDG, caller).intersection(valid_jumpis)
+        caller_to_jumpis.update(hit)
+
+    # SLOAD 到 JUMPI 的所有路线
+    sload_to_jumpis = set()
+    for sload in valid_sloads:
+        hit = nx.descendants(DDG, sload).intersection(valid_jumpis)
+        sload_to_jumpis.update(hit)
+
+    # 直接在 JUMPI 处交汇！
+    mapping_auth_jumpis = caller_to_jumpis.intersection(sload_to_jumpis)
+
+    # 排除已经通过二元比较找到的，剩下的就是 Mapping 模式独有的
+    pure_mapping_jumpis = mapping_auth_jumpis - set(
+        [j for sinks in [nx.descendants(DDG, c).intersection(valid_jumpis) for c in shared_compares] for j in sinks])
+
+    for j in pure_mapping_jumpis:
+        if j in df_block_dict:
+            true_auth_blocks.add(df_block_dict[j])
+        print(f"📖 发现映射鉴权点 (Mapping Check) 流向: [JUMPI]({j})")
+
+    print(f"[+] 补充发现 {len(pure_mapping_jumpis)} 个 Mapping 鉴权点。")
+    return true_auth_blocks
 
 
 if __name__ == "__main__":

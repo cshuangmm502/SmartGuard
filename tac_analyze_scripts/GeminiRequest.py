@@ -51,11 +51,11 @@ def robust_extract_category(text):
 
     return None, None
 
-def classify_event_with_agent(event_signature, path="event_cache.json"):
+def classify_event_with_agent(artifacts_path, event_signature, path="event_cache.json"):
     """
     使用 LLM 分析事件语义（带重试和暴力解析）。
     """
-    out_dir = Path("output_debug")
+    out_dir = artifacts_path / "output_debug"
     if not out_dir.exists():
         out_dir.mkdir(parents=True)
 

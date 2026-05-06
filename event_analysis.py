@@ -3,7 +3,7 @@ from tac_analyze_scripts.GeminiRequest import classify_event_with_agent
 from pathlib import Path
 
 
-def analyze_events(events):
+def analyze_events(events, artifacts_path):
     # 5. 关键词分类 (Deposit / Withdrawal)
     # -----------------------------------------------------------
     emitting_block = []
@@ -22,7 +22,7 @@ def analyze_events(events):
     for sig in unique_signatures:
         if sig == "0" or pd.isna(sig):
             continue
-        category = classify_event_with_agent(str(sig))
+        category = classify_event_with_agent(artifacts_path, str(sig))
         sig_classification[sig] = category
 
     # 根据分类结果填充 Block 列表

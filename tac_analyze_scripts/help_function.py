@@ -49,8 +49,8 @@ def read_gigahorse_csv_as_table(file_path: Path, filename, columns):
     else:
         return pd.DataFrame(columns=columns)
 
-def output_Graph_to_file(G,file_name):
-    out_dir = Path("output_debug")
+def output_Graph_to_file(G,file_name, output_dir):
+    out_dir = output_dir / "output_debug"
     node_rows = []
     node_attr_keys = set()
     # 先收集所有节点属性key

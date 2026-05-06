@@ -10,7 +10,7 @@ from tac_analysis import (extract_all_events, extract_all_storage, extract_all_p
 from tac_analyze_scripts.help_function import output_Graph_to_file
 from xCFG import build_global_cfg, build_fcg, build_data_dependency_graph, \
     get_true_auth_blocks_with_debug, get_precise_auth_info, extract_sload_to_jumpi_paths, extract_caller_to_jumpi_paths, \
-    extract_function_args_to_jumpi
+    extract_function_args_to_jumpi, extract_arg_state_rendezvous, extract_caller_state_rendezvous
 
 
 def load_csv_from_gig(artifacts_dir, contract_name):
@@ -57,20 +57,27 @@ def vulnerability_analysis(artifacts_path, contract_name):
     #
     # events = extract_all_events(df_opcodes, df_var_values, df_uses, df_sign_eventName, df_stmts_in_block)
     #
-    # global_cfg = build_global_cfg(df_blockEdge, df_functionCall, df_functionReturn, df_publicFunction, events)
-    # re_funcs, fcg, emitting_functions, informing_functions = build_fcg(df_functionCall, df_block_in_func, events)
+    # global_cfg = build_global_cfg(artifacts_path, df_blockEdge, df_functionCall, df_functionReturn, df_publicFunction, events)
+    # re_funcs, fcg, emitting_functions, informing_functions = build_fcg(artifacts_path, df_functionCall, df_block_in_func, events)
     #
     # ACV_analysis(df_functionCall, df_block_in_func, emitting_functions, informing_functions, fcg, global_cfg,
     #              storage, caller, callData, callPubArgs, callPriArgs)
     ddg = build_data_dependency_graph(df_defines, df_uses)
-    output_Graph_to_file(ddg, "Data_dependency_graph")
+    output_Graph_to_file(ddg, "Data_dependency_graph", artifacts_path)
     # result = get_true_auth_blocks_with_debug(ddg, df_opcodes, df_stmts_in_block)
-    AUTH_BLOCKS_SLOAD = extract_sload_to_jumpi_paths(ddg, df_opcodes, df_stmts_in_block)
-    print(AUTH_BLOCKS_SLOAD)
+    # AUTH_BLOCKS_SLOAD = extract_sload_to_jumpi_paths(ddg, df_opcodes, df_stmts_in_block)
+    # print(AUTH_BLOCKS_SLOAD)
     # AUTH_BLOCKS_CALLER = extract_caller_to_jumpi_paths(ddg, df_opcodes, df_stmts_in_block)
     # print(AUTH_BLOCKS_CALLER)
-    AUTH_BLOCKS_PUBLICARGS = extract_function_args_to_jumpi(ddg, df_defines, df_publicArgs, df_opcodes, df_stmts_in_block)
-    print(AUTH_BLOCKS_PUBLICARGS)
+    # AUTH_BLOCKS_PUBLICARGS = extract_function_args_to_jumpi(ddg, df_defines, df_publicArgs, df_opcodes, df_stmts_in_block)
+    # print(AUTH_BLOCKS_PUBLICARGS)
+    # 提取arg和状态交汇的检查块
+    df_allArgs = pd.concat([df_publicArgs, df_formalArgs], ignore_index=True)
+    TRUE_AUTH_BLOCKS_PUBLICARGS = extract_arg_state_rendezvous(ddg, df_defines, df_allArgs, df_opcodes, df_stmts_in_block)
+    print(TRUE_AUTH_BLOCKS_PUBLICARGS)
+    # 提取caller和状态交汇的检查块
+    # CALLER_STATE_AUTH_BLOCKS = extract_caller_state_rendezvous(ddg, df_opcodes, df_stmts_in_block)
+    # print(CALLER_STATE_AUTH_BLOCKS)
     # # print(f"Re_fun:{re_funcs}")
     # # print(f"cfg:{cfg}")
     # # print(f"emitting_function:{emitting_function}")
@@ -82,7 +89,7 @@ def vulnerability_analysis(artifacts_path, contract_name):
 if __name__ == "__main__":
     PROJECT_ROOT = Path(__file__).resolve().parent
     CONTRACTS_PATH = PROJECT_ROOT / "contracts"
-    CONTRACT_NAME = "ChainSwap"
+    CONTRACT_NAME = "UnifiedRouterV2_0xfa43DE785dd3Cd0ef3dAE0dD2b8bE3F1B5112d1a_DB"
     CONTRACT_ARTIFACTS_PATH = CONTRACTS_PATH / CONTRACT_NAME
     vulnerability_analysis(CONTRACT_ARTIFACTS_PATH, CONTRACT_NAME)
     # readFile(CONTRACT_ARTIFACTS_PATH)
