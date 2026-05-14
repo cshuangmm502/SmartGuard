@@ -216,6 +216,8 @@ def extract_used_callPriArgs_in_controlFlow(BlockList, CallPriArgs):
     return list(used_formalargs_info), related_blocks
 
 
+
+
 def SecurityCheckExtraction_block(BlockList, Storage, Caller, CallData, CallPubArgs, CallFormalArgs):
     used_storage_info, related_blocks = extract_used_storage_in_controlflow(BlockList, Storage)
     used_caller_info = extract_used_caller_in_controlFlow(BlockList, Caller)

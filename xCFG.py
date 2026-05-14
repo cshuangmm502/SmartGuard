@@ -17,13 +17,9 @@ CONTRACT_ARTIFACTS_PATH = OUT_DIR.parent
 
 def build_global_cfg(artifacts_path, df_blockEdge, df_functionCall, df_functionReturn, df_publicFuncs, events):
     emitting_events, informing_events = analyze_events(events, artifacts_path)
-    informing_blocks = informing_events['block'].tolist()
-    emitting_blocks = emitting_events['block'].tolist()
+    informing_blocks = informing_events['blockID'].tolist()
+    emitting_blocks = emitting_events['blockID'].tolist()
 
-    """
-    高性能构建扩展控制流图 (xCFG)。
-    利用 Pandas Merge 替代嵌套循环。
-    """
     G = nx.DiGraph()
 
     # ==========================================================
@@ -114,7 +110,6 @@ def build_global_cfg(artifacts_path, df_blockEdge, df_functionCall, df_functionR
 
 
 def build_fcg(artifacts_path, df_functionCall, df_block_in_func, events):
-
     # print("🚀 正在加载 Gigahorse 提取的 TAC 数据库...")
     functioncalls = df_functionCall
     block_func_relations = df_block_in_func
@@ -137,44 +132,14 @@ def build_fcg(artifacts_path, df_functionCall, df_block_in_func, events):
 
     emitting_events, informing_events = analyze_events(events, artifacts_path)
     # 处理 Deposit (Emitting) -> Relayer
-    emitting_funcs, emit_sign = convert_events_to_func(block_func_relations, emitting_events)
-    # 去重
-    emitting_function = list(set(emitting_funcs))
-
-    # 添加边: Deposit Function -> Relayer
-    if emitting_function:
-        for func in emitting_function:
-            Call_G.add_edge(func, "relayer")
+    emitting_funcs = convert_events_to_func(block_func_relations, emitting_events)
+    print(emitting_funcs)
 
     # 处理 Withdrawal (Informing) -> Client
-    informing_funcs, inform_sign = convert_events_to_func(block_func_relations, informing_events)
-    # 去重
-    informing_function = list(set(informing_funcs))
+    informing_funcs = convert_events_to_func(block_func_relations, informing_events)
+    print(informing_funcs)
 
-    # 添加边: Withdrawal Function -> Client
-    if informing_function:
-        for func in informing_function:
-            Call_G.add_edge(func, "client")
-
-    emitting_function = list(set(emitting_function))
-
-    # 生成 Re_fun (Resource Functions List)关键资源函数
-    # ---------------------------------------------------------
-    # 逻辑：涉及存取的函数 + (如果有重复签名则加上 relayer/client)
-    Re_fun = list(set(emitting_function + informing_function))
-
-    # 原作者逻辑：如果 event 签名有重复 (len(set) < len(raw))，说明发生了多次相同的事件
-    # 这通常意味着高频跨链，所以把 relayer/client 加入关键节点列表
-    if len(set(emit_sign)) < len(emit_sign):
-        Re_fun.append("relayer")
-
-    if len(set(inform_sign)) < len(inform_sign):
-        Re_fun.append("client")
-
-    # 确保唯一性
-    Re_fun = list(set(Re_fun))
-
-    return Re_fun, Call_G, emitting_function, informing_function
+    return Call_G, emitting_funcs, informing_funcs
 
 
 def build_data_dependency_graph(df_defines, df_uses):
@@ -191,7 +156,7 @@ def build_data_dependency_graph(df_defines, df_uses):
 
     # 构建有向图
     DDG = nx.DiGraph()
-    edges = list(zip(df_flow['stmt_def'], df_flow['stmt_use']))
+    edges = list(zip(df_flow['stmtID_def'], df_flow['stmtID_use']))
     DDG.add_edges_from(edges)
 
     return DDG
@@ -626,11 +591,11 @@ def extract_arg_state_rendezvous(DDG, df_def, df_pub_args, df_opcode, df_block):
     """
     # 1. 基础映射准备
     df_opcode['opcode'] = df_opcode['opcode'].astype(str).str.strip().str.upper()
-    opcode_dict = df_opcode.set_index('stmt')['opcode'].to_dict()
-    df_block_dict = df_block.set_index('stmt')['block'].to_dict()
+    opcode_dict = df_opcode.set_index('stmtID')['opcode'].to_dict()
+    df_block_dict = df_block.set_index('stmtID')['blockID'].to_dict()
 
     # 2. 提取 SLOAD 起点
-    sload_stmts = set(df_opcode[df_opcode['opcode'] == 'SLOAD']['stmt'])
+    sload_stmts = set(df_opcode[df_opcode['opcode'] == 'SLOAD']['stmtID'])
     valid_sloads = [s for s in sload_stmts if s in DDG]
 
     # 3. 提取 Args 起点 (带有高级语义)
@@ -638,7 +603,7 @@ def extract_arg_state_rendezvous(DDG, df_def, df_pub_args, df_opcode, df_block):
     valid_args = []
     arg_to_info = {}
     for _, row in args_sources_df.iterrows():
-        stmt = row['stmt']
+        stmt = row['stmtID']
         if stmt in DDG:
             valid_args.append(stmt)
             # 兼容之前合并产生的 index_x
@@ -648,7 +613,7 @@ def extract_arg_state_rendezvous(DDG, df_def, df_pub_args, df_opcode, df_block):
     # 4. 定义目标：二元比较指令 和 JUMPI
     # 注意：ISZERO 是单元的，通常在比较之后，所以真正的交汇点一定是下面这些二元操作符
     BINARY_COMPARES = {'EQ', 'LT', 'GT', 'SLT', 'SGT'}
-    jumpi_stmts = set(df_opcode[df_opcode['opcode'] == 'JUMPI']['stmt'])
+    jumpi_stmts = set(df_opcode[df_opcode['opcode'] == 'JUMPI']['stmtID'])
     valid_jumpis = set([s for s in jumpi_stmts if s in DDG])
 
     print(f"[*] 开始进行数据流交汇分析 (Rendezvous Analysis)...")
@@ -719,22 +684,22 @@ def extract_caller_state_rendezvous(DDG, df_opcode, df_block):
     # 1. 基础映射准备
     # 确保 opcode 转为大写并去除了空白字符
     df_opcode['opcode'] = df_opcode['opcode'].astype(str).str.strip().str.upper()
-    opcode_dict = df_opcode.set_index('stmt')['opcode'].to_dict()
-    df_block_dict = df_block.set_index('stmt')['block'].to_dict()
+    opcode_dict = df_opcode.set_index('stmtID')['opcode'].to_dict()
+    df_block_dict = df_block.set_index('stmtID')['blockID'].to_dict()
 
     # 2. 提取 SLOAD 起点
-    sload_stmts = set(df_opcode[df_opcode['opcode'] == 'SLOAD']['stmt'])
+    sload_stmts = set(df_opcode[df_opcode['opcode'] == 'SLOAD']['stmtID'])
     valid_sloads = [s for s in sload_stmts if s in DDG]
 
     # 3. 提取 CALLER / ORIGIN 起点
     # 在有些恶意合约或特定业务中，也会用 tx.origin 进行鉴权
-    caller_stmts = set(df_opcode[df_opcode['opcode'].isin(['CALLER', 'ORIGIN'])]['stmt'])
+    caller_stmts = set(df_opcode[df_opcode['opcode'].isin(['CALLER', 'ORIGIN'])]['stmtID'])
     valid_callers = [s for s in caller_stmts if s in DDG]
 
     # 4. 定义目标：二元比较指令 和 JUMPI
     # EQ (等于) 是权限校验中最常见的
     BINARY_COMPARES = {'EQ', 'LT', 'GT', 'SLT', 'SGT'}
-    jumpi_stmts = set(df_opcode[df_opcode['opcode'] == 'JUMPI']['stmt'])
+    jumpi_stmts = set(df_opcode[df_opcode['opcode'] == 'JUMPI']['stmtID'])
     valid_jumpis = set([s for s in jumpi_stmts if s in DDG])
 
     print(f"[*] 开始经典权限交汇分析 (msg.sender vs SLOAD) ...")
@@ -826,6 +791,91 @@ def extract_caller_state_rendezvous(DDG, df_opcode, df_block):
     return true_auth_blocks
 
 
+def extract_value_state_rendezvous(DDG, df_opcode, df_block):
+    """
+    终极资金约束提取：寻找 (SLOAD / CALL / MLOAD) 与 msg.value 交汇的比较指令。
+    完美捕获内部状态、外部配置拉取、内存参数的资金校验！
+    """
+    df_opcode['opcode'] = df_opcode['opcode'].astype(str).str.strip().str.upper()
+    opcode_dict = df_opcode.set_index('stmtID')['opcode'].to_dict()
+    df_block_dict = df_block.set_index('stmtID')['blockID'].to_dict()
+
+    # ================= 核心修复 =================
+    # 增加 MLOAD (捕获外部调用解码后的值)
+    # 增加 RETURNDATASIZE (有的极简合约直接比较返回大小)
+    STATE_OPCODES = {'SLOAD', 'CALL', 'STATICCALL', 'MLOAD', 'RETURNDATASIZE'}
+    state_stmts = set(df_opcode[df_opcode['opcode'].isin(STATE_OPCODES)]['stmtID'])
+    valid_states = [s for s in state_stmts if s in DDG]
+    # ============================================
+
+    value_stmts = set(df_opcode[df_opcode['opcode'] == 'CALLVALUE']['stmtID'])
+    valid_values = [s for s in value_stmts if s in DDG]
+
+    BINARY_COMPARES = {'EQ', 'LT', 'GT', 'SLT', 'SGT'}
+    jumpi_stmts = set(df_opcode[df_opcode['opcode'] == 'JUMPI']['stmtID'])
+    valid_jumpis = set([s for s in jumpi_stmts if s in DDG])
+
+    print(f"[*] 开始终极资金交汇分析 (跨越内存断层) ...")
+
+    # 寻路
+    state_to_compares = {}
+    for state in valid_states:
+        for desc in nx.descendants(DDG, state):
+            if opcode_dict.get(desc) in BINARY_COMPARES:
+                state_to_compares.setdefault(desc, set()).add(state)
+
+    value_to_compares = {}
+    for val in valid_values:
+        for desc in nx.descendants(DDG, val):
+            if opcode_dict.get(desc) in BINARY_COMPARES:
+                value_to_compares.setdefault(desc, set()).add(val)
+
+    # 交汇
+    shared_compares = set(state_to_compares.keys()).intersection(set(value_to_compares.keys()))
+
+    true_auth_blocks = set()
+    found_count = 0
+
+    for comp_stmt in shared_compares:
+        reachable_from_comp = nx.descendants(DDG, comp_stmt)
+        hit_jumpis = reachable_from_comp.intersection(valid_jumpis)
+
+        if not hit_jumpis:
+            continue
+
+        for j in hit_jumpis:
+            if j in df_block_dict:
+                true_auth_blocks.add(df_block_dict[j])
+
+        found_count += 1
+        comp_op = opcode_dict.get(comp_stmt)
+
+        states_involved = state_to_compares[comp_stmt]
+        values_involved = value_to_compares[comp_stmt]
+
+        value_descriptions = [f"[CALLVALUE]({v})" for v in values_involved]
+
+        state_descriptions = []
+        for s in states_involved:
+            op = opcode_dict.get(s)
+            if op == 'MLOAD':
+                state_descriptions.append(f"[内存提取/外部返回值 MLOAD]({s})")
+            else:
+                state_descriptions.append(f"[{op}]({s})")
+
+        jumpi_descriptions = [f"[JUMPI]({j})" for j in hit_jumpis]
+
+        print(f"💎 终极业务约束点 #{found_count}:")
+        print(f"  📌 传入资金: {', '.join(value_descriptions)}")
+        print(f"  📌 对照标准: {', '.join(state_descriptions)}")
+        print(f"  ⚖️ 交汇比对: [{comp_op}]({comp_stmt})")
+        print(f"  🛡️ 守护区块: 跳转判断 {', '.join(jumpi_descriptions)}")
+        print("-" * 70)
+
+    print(f"\n[+] 提取完毕！共发现 {found_count} 个约束点。")
+    return true_auth_blocks
+
+
 if __name__ == "__main__":
     # b, graph_index = generate_ListandGraph(CONTRACT_ARTIFACTS_PATH)
     # print(graph_index)
@@ -857,4 +907,3 @@ if __name__ == "__main__":
 
     # analyze_cfg(G)
     # Build_call_graph(CONTRACT_ARTIFACTS_PATH)
-

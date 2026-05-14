@@ -60,14 +60,14 @@ def extract_all_storage(df_opcodes, df_defines, df_uses, df_var_values, df_mappi
     # print(f"{'指令 ID':<12} | {'Key 变量':<10} | {'解析出的 Slot (十六进制)':<30} | {'变量类型':<12} | {'是否打包'} | {'slot偏移量'} | {'描述'} ")
     # print("-" * 90)
 
-    sload_stmts = opcodes[opcodes['opcode'] == 'SLOAD']['stmt'].tolist()
+    sload_stmts = opcodes[opcodes['opcode'] == 'SLOAD']['stmtID'].tolist()
 
     storage = pd.DataFrame(
         columns=['stmtID', 'variable', 'slot', 'semantic', 'var_type', 'is_package', 'slot_Offset', 'describe',
                  'blockID'])
 
     for sload_stmt in sload_stmts:
-        key_vars = uses[uses['stmt'] == sload_stmt]['var'].tolist()
+        key_vars = uses[uses['stmtID'] == sload_stmt]['var'].tolist()
         if not key_vars: continue
         key_var = key_vars[0]
         sload_type = -1
@@ -88,7 +88,7 @@ def extract_all_storage(df_opcodes, df_defines, df_uses, df_var_values, df_mappi
         # 2. 如果不是常量，使用 Datalog 跑出的结果！
         if not is_constant:
             # 去 Datalog 的结果表里查一下，这个 SLOAD 在不在里面？
-            dl_match = mapping_slots[mapping_slots['stmt'] == sload_stmt]
+            dl_match = mapping_slots[mapping_slots['stmtID'] == sload_stmt]
             if not dl_match.empty:
                 base_slot = str(dl_match['base_slot'].values[0]).strip()
                 # slot_info = f"Base Slot: {base_slot} ({key_var})"
@@ -96,9 +96,9 @@ def extract_all_storage(df_opcodes, df_defines, df_uses, df_var_values, df_mappi
                 sload_type_info = f"🔵 Mapping (Datalog 跨块追踪)-> Base Slot: {base_slot} ({key_var})"
             else:
                 # Datalog 也没找到？那我们只能退回到基本推导，看它是不是 SHA3 或 ADD
-                def_stmts = defines[defines['var'] == key_var]['stmt'].tolist()
+                def_stmts = defines[defines['var'] == key_var]['stmtID'].tolist()
                 if def_stmts:
-                    def_opcode_series = opcodes[opcodes['stmt'] == def_stmts[0]]['opcode']
+                    def_opcode_series = opcodes[opcodes['stmtID'] == def_stmts[0]]['opcode']
                     if not def_opcode_series.empty:
                         def_opcode = def_opcode_series.values[0]
                         if def_opcode == 'SHA3':
@@ -116,7 +116,7 @@ def extract_all_storage(df_opcodes, df_defines, df_uses, df_var_values, df_mappi
         # 1. 找到 SLOAD "定义(Defines)" 了哪个变量 (读出来的 32 bytes 原始数据)
         # 🚀 进阶挖掘：转换为反编译器视角的 bytes X to Y
         # ========================================================
-        sload_def_vars = defines[defines['stmt'] == sload_stmt]['var'].tolist()
+        sload_def_vars = defines[defines['stmtID'] == sload_stmt]['var'].tolist()
 
         byte_offset = 0
         byte_size = 32
@@ -136,17 +136,17 @@ def extract_all_storage(df_opcodes, df_defines, df_uses, df_var_values, df_mappi
 
         if sload_def_vars:
             sload_val_var = sload_def_vars[0]
-            uses_of_sload = uses[uses['var'] == sload_val_var]['stmt'].tolist()
+            uses_of_sload = uses[uses['var'] == sload_val_var]['stmtID'].tolist()
 
             for u_stmt in uses_of_sload:
-                u_op_series = opcodes[opcodes['stmt'] == u_stmt]['opcode']
+                u_op_series = opcodes[opcodes['stmtID'] == u_stmt]['opcode']
                 if u_op_series.empty: continue
                 u_op = u_op_series.values[0]
 
                 try:
                     # 模式 A: 读取模式 (发生了移位 SHR 或 DIV)
                     if u_op in ['SHR', 'DIV']:
-                        shift_args = uses[uses['stmt'] == u_stmt]
+                        shift_args = uses[uses['stmtID'] == u_stmt]
                         for _, row in shift_args.iterrows():
                             if row['var'] != sload_val_var:
                                 val = get_constant_value(row['var'])
@@ -160,14 +160,14 @@ def extract_all_storage(df_opcodes, df_defines, df_uses, df_var_values, df_mappi
                                     break
 
                         # 继续寻找后续的 AND 截断以确定 Size
-                        shifted_defs = defines[defines['stmt'] == u_stmt]['var'].tolist()
+                        shifted_defs = defines[defines['stmtID'] == u_stmt]['var'].tolist()
                         if shifted_defs:
                             shifted_var = shifted_defs[0]
-                            uses_of_shifted = uses[uses['var'] == shifted_var]['stmt'].tolist()
+                            uses_of_shifted = uses[uses['var'] == shifted_var]['stmtID'].tolist()
                             for uu_stmt in uses_of_shifted:
-                                uu_op_series = opcodes[opcodes['stmt'] == uu_stmt]['opcode']
+                                uu_op_series = opcodes[opcodes['stmtID'] == uu_stmt]['opcode']
                                 if not uu_op_series.empty and uu_op_series.values[0] == 'AND':
-                                    and_args = uses[uses['stmt'] == uu_stmt]
+                                    and_args = uses[uses['stmtID'] == uu_stmt]
                                     for _, row in and_args.iterrows():
                                         if row['var'] != shifted_var:
                                             val = get_constant_value(row['var'])
@@ -178,7 +178,7 @@ def extract_all_storage(df_opcodes, df_defines, df_uses, df_var_values, df_mappi
 
                     # 模式 B: 写入模式 (Clear Mask) 或无移位的读取模式
                     elif u_op == 'AND':
-                        and_args = uses[uses['stmt'] == u_stmt]
+                        and_args = uses[uses['stmtID'] == u_stmt]
                         for _, row in and_args.iterrows():
                             if row['var'] != sload_val_var:
                                 val = get_constant_value(row['var'])
@@ -214,9 +214,8 @@ def extract_all_storage(df_opcodes, df_defines, df_uses, df_var_values, df_mappi
             pack_info = f"bytes {start_byte} to {end_byte}"
         # print(f"{sload_stmt:<12} | {key_var:<10} | {base_slot:<35} | {sload_type:<12} | {is_package_slot} | {pack_info} | {sload_type_info} " )
         line = pd.Series(
-            {'stmt': sload_stmt, 'variable': key_var, 'slot': base_slot, 'semantic': "None", 'var_type': sload_type,
-             'is_package':
-                 is_package_slot, 'slot_Offset': pack_info, 'describe': sload_type_info, 'block': '0'})
+            {'stmtID': sload_stmt, 'variable': key_var, 'slot': base_slot, 'semantic': "None", 'var_type': sload_type,
+             'is_package': is_package_slot, 'slot_Offset': pack_info, 'describe': sload_type_info, 'blockID': '0'})
         storage = storage.append(line, ignore_index=True)
 
     original_cols = storage.columns.tolist()
@@ -225,10 +224,10 @@ def extract_all_storage(df_opcodes, df_defines, df_uses, df_var_values, df_mappi
     storage['semantic'].update(storage_semantic['semantic'])
     storage = storage.reset_index()
 
-    stmt_block = stmt_block.set_index(['stmt'])
-    storage = storage.set_index(['stmt'])
+    stmt_block = stmt_block.set_index(['stmtID'])
+    storage = storage.set_index(['stmtID'])
 
-    storage['block'].update(stmt_block['block'])
+    storage['blockID'].update(stmt_block['blockID'])
     storage = storage.reset_index()
     storage = storage[original_cols]
     # print("\n🎯 分析完成！")
@@ -259,11 +258,11 @@ def extract_all_publicFunc_call(df_opcodes, df_defines, df_uses, df_var_values, 
     # print("-" * 85)
 
     for _, row in target_stmts.iterrows():
-        stmt = row['stmt']
+        stmt = row['stmtID']
         op = row['opcode']
 
         # 查找该指令产生了哪个变量 (Def)
-        def_vars = defines[defines['stmt'] == stmt]['var'].tolist()
+        def_vars = defines[defines['stmtID'] == stmt]['var'].tolist()
         def_var = def_vars[0] if def_vars else "无 (N/A)"
 
         semantic = "未知"
@@ -282,7 +281,7 @@ def extract_all_publicFunc_call(df_opcodes, df_defines, df_uses, df_var_values, 
         elif op == 'CALLDATALOAD':
             tag = 1
             # CALLDATALOAD 的第 0 个参数 (index 0) 就是它的读取偏移量 offset
-            use_vars = uses[(uses['stmt'] == stmt) & (uses['index'] == 0)]['var'].tolist()
+            use_vars = uses[(uses['stmtID'] == stmt) & (uses['index'] == 0)]['var'].tolist()
             if use_vars:
                 offset_var = use_vars[0]
                 offset_val_hex = get_constant_value(offset_var)
@@ -311,11 +310,11 @@ def extract_all_publicFunc_call(df_opcodes, df_defines, df_uses, df_var_values, 
             tag = 1
             semantic = "📋 拷贝 Calldata 进内存 (通常用于 bytes 或 string 参数)"
 
-        line = pd.Series({'stmt': stmt,
+        line = pd.Series({'stmtID': stmt,
                           'opcode': op,
                           'defVar': def_var,
                           'description': semantic,
-                          'block': '0'
+                          'blockID': '0'
                           })
         if tag == 0:
             Caller_Info = Caller_Info.append(line, ignore_index=True)
@@ -327,12 +326,12 @@ def extract_all_publicFunc_call(df_opcodes, df_defines, df_uses, df_var_values, 
     original_calldata_cols = Calldata_Info.columns.tolist()
 
     stmt_block = df_stmts_in_block
-    stmt_block = stmt_block.set_index(['stmt'])
-    Caller_Info = Caller_Info.set_index(['stmt'])
-    Calldata_Info = Calldata_Info.set_index(['stmt'])
+    stmt_block = stmt_block.set_index(['stmtID'])
+    Caller_Info = Caller_Info.set_index(['stmtID'])
+    Calldata_Info = Calldata_Info.set_index(['stmtID'])
 
-    Caller_Info['block'].update(stmt_block['block'])
-    Calldata_Info['block'].update(stmt_block['block'])
+    Caller_Info['blockID'].update(stmt_block['blockID'])
+    Calldata_Info['blockID'].update(stmt_block['blockID'])
     Caller_Info = Caller_Info.reset_index()
     Calldata_Info = Calldata_Info.reset_index()
     Caller_Info = Caller_Info[original_caller_cols]
@@ -350,14 +349,14 @@ def extract_all_publicFunc_args(df_publicArgs, df_uses, df_stmts_in_block):
     # print("\n🔍 正在提取public函数与参数使用关系...\n")
 
     pubFunc_args_row = uses[uses.iloc[:, 1].isin(args.iloc[:, 1])]
-    pubFunc_args = pd.DataFrame(columns=['stmt', 'var', 'block'])
+    pubFunc_args = pd.DataFrame(columns=['stmtID', 'var', 'blockID'])
 
     for _, row in pubFunc_args_row.iterrows():
-        stmt = row['stmt']
+        stmt = row['stmtID']
         var = row['var']
-        line = pd.Series({'stmt': stmt,
+        line = pd.Series({'stmtID': stmt,
                           'var': var,
-                          'block': '0'
+                          'blockID': '0'
                           })
         pubFunc_args = pubFunc_args.append(line, ignore_index=True)
 
@@ -366,10 +365,10 @@ def extract_all_publicFunc_args(df_publicArgs, df_uses, df_stmts_in_block):
     original_pubfuncargs_cols = pubFunc_args.columns.tolist()
 
     stmt_block = df_stmts_in_block
-    stmt_block = stmt_block.set_index(['stmt'])
-    pubFunc_args = pubFunc_args.set_index(['stmt'])
+    stmt_block = stmt_block.set_index(['stmtID'])
+    pubFunc_args = pubFunc_args.set_index(['stmtID'])
 
-    pubFunc_args['block'].update(stmt_block['block'])
+    pubFunc_args['blockID'].update(stmt_block['blockID'])
 
     pubFunc_args = pubFunc_args.reset_index()
 
@@ -386,14 +385,14 @@ def extract_all_privateFunc_args(df_formalArgs, df_uses, df_stmts_in_block):
     # print("\n🔍 正在提取私有函数与参数使用关系...\n")
 
     privFunc_args_row = uses[uses.iloc[:, 1].isin(args.iloc[:, 1])]
-    privFunc_args = pd.DataFrame(columns=['stmt', 'var', 'block'])
+    privFunc_args = pd.DataFrame(columns=['stmtID', 'var', 'blockID'])
 
     for _, row in privFunc_args_row.iterrows():
-        stmt = row['stmt']
+        stmt = row['stmtID']
         var = row['var']
-        line = pd.Series({'stmt': stmt,
+        line = pd.Series({'stmtID': stmt,
                           'var': var,
-                          'block': '0'
+                          'blockID': '0'
                           })
         privFunc_args = privFunc_args.append(line, ignore_index=True)
 
@@ -402,10 +401,10 @@ def extract_all_privateFunc_args(df_formalArgs, df_uses, df_stmts_in_block):
     original_formalargs_cols = privFunc_args.columns.tolist()
 
     stmt_block = df_stmts_in_block
-    stmt_block = stmt_block.set_index(['stmt'])
-    privFunc_args = privFunc_args.set_index(['stmt'])
+    stmt_block = stmt_block.set_index(['stmtID'])
+    privFunc_args = privFunc_args.set_index(['stmtID'])
 
-    privFunc_args['block'].update(stmt_block['block'])
+    privFunc_args['blockID'].update(stmt_block['blockID'])
 
     privFunc_args = privFunc_args.reset_index()
 
@@ -427,14 +426,14 @@ def extract_all_events(df_opcodes, df_var_values, df_uses, df_sign_eventName, df
     event_stmts = opcodes[opcodes['opcode'].isin(['LOG1', 'LOG2', 'LOG3', 'LOG4'])].copy()
 
     topic0_vars = uses[
-        (uses['stmt'].isin(event_stmts['stmt'])) &
+        (uses['stmtID'].isin(event_stmts['stmtID'])) &
         (uses['index'] == 2)
         ].copy()
 
     topic0_with_sign = topic0_vars.merge(var_value, on='var', how='left')
     topic0_with_sign = topic0_with_sign.rename(columns={'value': 'signature'})
     topic0_with_name = topic0_with_sign.merge(sign_eventName, on='signature', how='left')
-    events = topic0_with_name.merge(stmt_block, on='stmt', how='left')
-    events = events[['stmt', 'signature', 'event_name', 'block']]
+    events = topic0_with_name.merge(stmt_block, on='stmtID', how='left')
+    events = events[['stmtID', 'signature', 'event_name', 'blockID']]
 
     return events
