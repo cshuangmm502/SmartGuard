@@ -192,7 +192,7 @@ def detect_incomplete_AC(df_functionCall, df_block_in_func, target_funcs_info, f
             # ==========================================
             if is_path_safe:
                 # 只要前面的所有跳跃或者最后函数中，有任意一个卡点是安全的，这条路就安全
-                print(f"🟢 结论：路径安全！提供保护的所有区块: {protecting_blocks}")
+                print(f"🟢 结论：路径存在安全检查！提供保护的所有区块: {protecting_blocks}")
             else:
                 print(f"🔴 结论：警告！到达 {event_name} 的路径存在绕过风险 (全程无有效鉴权)")
 

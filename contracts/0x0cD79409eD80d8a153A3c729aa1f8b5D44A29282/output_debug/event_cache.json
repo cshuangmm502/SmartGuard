@@ -1,0 +1,12 @@
+{
+    "ProposalEvent(uint8,uint64,uint8,bytes32)": "OTHER",
+    "Deposit(uint8,bytes32,uint64,address,bytes)": "DEPOSIT",
+    "OwnershipTransferred(address,address)": "OTHER",
+    "RoleGranted(bytes32,address,address)": "OTHER",
+    "RoleRevoked(bytes32,address,address)": "OTHER",
+    "PauseChanged(bool)": "OTHER",
+    "RelayerThresholdChanged(uint256)": "OTHER",
+    "RelayerRemoved(address)": "OTHER",
+    "FailedHandlerExecution(bytes)": "OTHER",
+    "ProposalVote(uint8,uint64,uint8,bytes32)": "OTHER"
+}

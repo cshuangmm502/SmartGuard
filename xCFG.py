@@ -875,6 +875,557 @@ def extract_value_state_rendezvous(DDG, df_opcode, df_block):
     print(f"\n[+] 提取完毕！共发现 {found_count} 个约束点。")
     return true_auth_blocks
 
+# 宽松的检查块提取方法
+def extract_predicate_slices(DDG, df_opcode, df_block, sload_semantics_dict):
+    """
+    基于向后切片 (Backward Slicing) 提取所有依赖关键变量的条件谓词区域。
+    """
+    df_opcode['opcode'] = df_opcode['opcode'].astype(str).str.strip().str.upper()
+    opcode_dict = df_opcode.set_index('stmtID')['opcode'].to_dict()
+    df_block_dict = df_block.set_index('stmtID')['blockID'].to_dict()
+    # diagnose_jumpi(DDG, opcode_dict, '0xec1')
+    # 1. 定义我们关心的所有关键数据源
+    CRITICAL_SOURCES = {'CALLER', 'ORIGIN', 'CALLVALUE', 'SLOAD', 'CALLDATALOAD', 'CALLDATACOPY', 'CALL', 'STATICCALL'}
+
+    source_stmts = set(df_opcode[df_opcode['opcode'].isin(CRITICAL_SOURCES)]['stmtID'])
+    valid_sources = [s for s in source_stmts if s in DDG]
+
+    jumpi_stmts = set(df_opcode[df_opcode['opcode'] == 'JUMPI']['stmtID'])
+    valid_jumpis = set([s for s in jumpi_stmts if s in DDG])
+
+    # 2. 前向追踪：找到所有受关键变量影响的 JUMPI
+    affected_jumpis = set()
+    for source in valid_sources:
+        hit_jumpis = nx.descendants(DDG, source).intersection(valid_jumpis)
+        affected_jumpis.update(hit_jumpis)
+
+    print(f"[*] 发现 {len(affected_jumpis)} 个受关键数据影响的条件跳转 (JUMPI)。")
+    print(f"[*] 正在进行向后切片 (Backward Slicing) 提取谓词区域...\n")
+
+    extracted_predicates = []
+
+    # 3. 后向切片：提取决策该 JUMPI 的所有指令
+    for jumpi in affected_jumpis:
+        # nx.ancestors 返回所有能流向该 JUMPI 的节点
+        ancestors = nx.ancestors(DDG, jumpi)
+
+        # 将 JUMPI 自身也加入切片
+        slice_nodes = set(ancestors)
+        slice_nodes.add(jumpi)
+
+        # 提取切片的子图 (这就是完整的“谓词区域”)
+        predicate_subgraph = DDG.subgraph(slice_nodes)
+
+        # 统计这个切片中包含哪些关键数据源
+        involved_sources = slice_nodes.intersection(valid_sources)
+        involved_opcodes = [opcode_dict.get(s) for s in involved_sources]
+
+        # ==== 轻量级噪音过滤策略 ====
+        # 如果切片中只包含 CALLDATALOAD，且没有 SLOAD/CALLER/CALLVALUE
+        # 这极有可能是 数组长度检查(循环) 或 纯参数检查(非权限)
+        is_only_args = all(op in {'CALLDATALOAD', 'CALLDATACOPY'} for op in involved_opcodes)
+        if is_only_args:
+            # 你可以选择记录下来，但赋予较低的置信度，或者直接跳过
+            continue
+
+        # semantic_summary = analyze_slice_semantics(predicate_subgraph, jumpi, DDG, opcode_dict)
+        semantic_summary = analyze_slice_semantics_accurate(predicate_subgraph, jumpi, DDG, opcode_dict, sload_semantics_dict)
+            # 记录切片信息
+        block_id = df_block_dict.get(jumpi)
+        extracted_predicates.append({
+            'jumpi_stmt': jumpi,
+            'block_id': block_id,
+            'involved_sources': involved_opcodes,
+            'slice_size': len(slice_nodes),  # 切片包含的指令数量
+            'graph': predicate_subgraph
+        })
+
+        # 打印直观的谓词构成
+        source_str = ", ".join(set(involved_opcodes))
+        print(f"🎯 提取谓词区域 (守护区块: {block_id}):")
+        print(f"  📌 业务约束逻辑: {semantic_summary}")
+        print(f"  📌 驱动此判断的数据源: {source_str}")
+        print(f"  📌 谓词复杂度: {len(slice_nodes)} 条指令")
+        print("-" * 60)
+
+    # 提取所有合法的 Block ID
+    auth_blocks = set(p['block_id'] for p in extracted_predicates if p['block_id'])
+
+    print(f"\n[+] 切片提取完毕！共输出 {len(auth_blocks)} 个宽松但有效的守护区块 (AUTH_BLOCKS)。")
+    return auth_blocks
+
+def diagnose_jumpi(DDG, opcode_dict, target_jumpi_stmt):
+    print(f"\n[诊断] 正在分析目标 JUMPI: {target_jumpi_stmt}")
+
+    if target_jumpi_stmt not in DDG:
+        print("错误：该 JUMPI 不在数据依赖图中！")
+        return
+
+    ancestors = nx.ancestors(DDG, target_jumpi_stmt)
+    ancestor_opcodes = set()
+
+    for a in ancestors:
+        op = opcode_dict.get(a, "UNKNOWN")
+        ancestor_opcodes.add(op)
+
+    print(f"该 JUMPI 的所有上游指令种类: {ancestor_opcodes}")
+
+    CRITICAL = {'CALLER', 'ORIGIN', 'CALLVALUE', 'SLOAD', 'CALLDATALOAD', 'CALLDATACOPY', 'CALL', 'STATICCALL', 'MLOAD'}
+    hits = ancestor_opcodes.intersection(CRITICAL)
+    print(f"命中的关键数据源: {hits}")
+
+def analyze_slice_semantics(predicate_subgraph, jumpi_stmt, DDG, opcode_dict):
+    """
+    对提取出的谓词切片进行逆向解析，重构出类似 "CALLER == CONST" 的高级语义。
+    """
+    # 比较指令集合
+    BINARY_COMPARES = {'EQ', 'LT', 'GT', 'SLT', 'SGT'}
+
+    # 核心数据源分类映射
+    SEMANTIC_SOURCES = {
+        'CALLER': 'msg.sender',
+        'ORIGIN': 'tx.origin',
+        'CALLVALUE': 'msg.value',
+        'SLOAD': 'Storage_State',
+        'CALLDATALOAD': 'Args',
+        'CALLDATACOPY': 'Args',
+        'CALL': 'External_Call_Return',
+        'STATICCALL': 'External_Call_Return',
+        'MLOAD': 'Memory_Data',
+        'CONST': 'Constant_Value'  # 极其重要：常量！
+    }
+
+    # 1. 从 JUMPI 向上寻找核心比较指令
+    # 通常 JUMPI 的前驱是 ISZERO，ISZERO 的前驱才是 EQ/LT
+    current_nodes = list(predicate_subgraph.predecessors(jumpi_stmt))
+    comparator_stmt = None
+    comparator_op = None
+
+    # 向上寻找二元比较指令 (最多向上找 3 层，防止陷入死循环)
+    depth = 0
+    while current_nodes and depth < 3:
+        next_nodes = []
+        for node in current_nodes:
+            op = opcode_dict.get(node, "UNKNOWN")
+            if op in BINARY_COMPARES:
+                comparator_stmt = node
+                comparator_op = op
+                break
+            # 如果是 ISZERO 或者是布尔运算，继续往上找
+            if op in {'ISZERO', 'AND', 'OR', 'NOT'}:
+                next_nodes.extend(list(predicate_subgraph.predecessors(node)))
+
+        if comparator_stmt:
+            break
+        current_nodes = next_nodes
+        depth += 1
+
+    # 2. 分类回溯：如果找到了比较指令，解析它的左右分支
+    if comparator_stmt:
+        # 获取比较指令的所有输入 (前驱节点)
+        operands = list(predicate_subgraph.predecessors(comparator_stmt))
+
+        operand_semantics = []
+
+        # 遍历每个输入分支，向上溯源它到底是什么类型的变量
+        for operand in operands:
+            branch_semantic = "Computed_Value (Arithmetic/Hash)"
+
+            # 使用 BFS 向上遍历这个操作数所在的数据流分支
+            ancestors = nx.ancestors(predicate_subgraph, operand)
+            branch_nodes = set(ancestors)
+            branch_nodes.add(operand)
+
+            for node in branch_nodes:
+                op = opcode_dict.get(node, "UNKNOWN")
+                if op in SEMANTIC_SOURCES:
+                    # 如果发现了多个源（比如 msg.sender 参与了 hash 计算后才去比对）
+                    # 我们可以将其拼接，或者只记录最关键的源
+                    branch_semantic = SEMANTIC_SOURCES[op]
+                    # 如果是常量，我们可以把它标记出来
+                    if op == 'CONST':
+                        branch_semantic = "Hardcoded_Constant"
+                    break  # 找到核心源后跳出
+
+            operand_semantics.append(branch_semantic)
+
+        # 组装最终语义
+        if len(operand_semantics) == 2:
+            return f"[{operand_semantics[0]} {comparator_op} {operand_semantics[1]}]"
+        elif len(operand_semantics) == 1:
+            return f"[{operand_semantics[0]} {comparator_op} ?]"
+        else:
+            return f"[Complex_Comparison {comparator_op}]"
+
+    # 3. 如果没找到二元比较指令 (比如直接 require(boolValue))
+    else:
+        # 看看这个布尔值来源于哪里
+        sources = []
+        for node in predicate_subgraph.nodes():
+            op = opcode_dict.get(node)
+            if op in SEMANTIC_SOURCES:
+                sources.append(SEMANTIC_SOURCES[op])
+
+        if sources:
+            return f"[Unary Boolean Check on: {', '.join(set(sources))}]"
+        else:
+            return "[Unknown Condition]"
+
+def analyze_slice_semantics_with_storage(predicate_subgraph, jumpi_stmt, DDG, opcode_dict, sload_semantics_dict):
+    """
+    带存储语义恢复的高级解析器。
+    :param sload_semantics_dict: 字典格式 {stmt_id: "变量名/语义", ...}
+    """
+    BINARY_COMPARES = {'EQ', 'LT', 'GT', 'SLT', 'SGT'}
+
+    # 静态语义源 (去掉了 SLOAD，因为我们需要对它进行动态解析)
+    STATIC_SEMANTIC_SOURCES = {
+        'CALLER': 'msg.sender',
+        'ORIGIN': 'tx.origin',
+        'CALLVALUE': 'msg.value',
+        'CALLDATALOAD': 'Args',
+        'CALLDATACOPY': 'Args',
+        'CALL': 'External_Call',
+        'STATICCALL': 'External_Call',
+        'MLOAD': 'Memory_Data',
+        'CONST': 'Hardcoded_Constant'
+    }
+
+    # 1. 向上寻找核心比较指令
+    current_nodes = list(predicate_subgraph.predecessors(jumpi_stmt))
+    comparator_stmt = None
+    comparator_op = None
+
+    depth = 0
+    while current_nodes and depth < 3:
+        next_nodes = []
+        for node in current_nodes:
+            op = opcode_dict.get(node, "UNKNOWN")
+            if op in BINARY_COMPARES:
+                comparator_stmt = node
+                comparator_op = op
+                break
+            if op in {'ISZERO', 'AND', 'OR', 'NOT'}:
+                next_nodes.extend(list(predicate_subgraph.predecessors(node)))
+
+        if comparator_stmt:
+            break
+        current_nodes = next_nodes
+        depth += 1
+
+    # 2. 分类回溯：解析分支
+    if comparator_stmt:
+        operands = list(predicate_subgraph.predecessors(comparator_stmt))
+        operand_semantics = []
+
+        for operand in operands:
+            branch_semantic = "Computed_Value"
+            ancestors = nx.ancestors(predicate_subgraph, operand)
+            branch_nodes = set(ancestors)
+            branch_nodes.add(operand)
+
+            # 在该分支中寻找语义源
+            for node in branch_nodes:
+                op = opcode_dict.get(node, "UNKNOWN")
+
+                # ================= 核心升级：动态查表 =================
+                if op == 'SLOAD':
+                    # 使用传入的字典查表，如果找不到，默认显示 Unknown_Slot
+                    storage_name = sload_semantics_dict.get(node, "Unknown_Slot")
+                    branch_semantic = f"Storage[{storage_name}]"
+                    break
+                # ====================================================
+
+                elif op in STATIC_SEMANTIC_SOURCES:
+                    branch_semantic = STATIC_SEMANTIC_SOURCES[op]
+                    break
+
+            operand_semantics.append(branch_semantic)
+
+        # 组装二元比较语义
+        if len(operand_semantics) == 2:
+            return f"[{operand_semantics[0]} {comparator_op} {operand_semantics[1]}]"
+        elif len(operand_semantics) == 1:
+            return f"[{operand_semantics[0]} {comparator_op} ?]"
+        else:
+            return f"[Complex_Comparison {comparator_op}]"
+
+    # 3. 解析布尔单目运算 (比如 require(isPaused))
+    else:
+        sources = []
+        for node in predicate_subgraph.nodes():
+            op = opcode_dict.get(node)
+            if op == 'SLOAD':
+                storage_name = sload_semantics_dict.get(node, "Unknown_Slot")
+                sources.append(f"Storage[{storage_name}]")
+            elif op in STATIC_SEMANTIC_SOURCES:
+                sources.append(STATIC_SEMANTIC_SOURCES[op])
+
+        if sources:
+            return f"[Boolean Check on: {', '.join(set(sources))}]"
+        else:
+            return "[Unknown Condition]"
+
+def analyze_slice_semantics_with_priority(predicate_subgraph, jumpi_stmt, DDG, opcode_dict, sload_semantics_dict):
+    """
+    具备语义优先级的精确解析器 (完美解决位掩码、哈希计算混入常量导致的误判)
+    """
+    BINARY_COMPARES = {'EQ', 'LT', 'GT', 'SLT', 'SGT'}
+
+    # 静态语义源
+    STATIC_SEMANTIC_SOURCES = {
+        'CALLER': 'msg.sender',
+        'ORIGIN': 'tx.origin',
+        'CALLVALUE': 'msg.value',
+        'CALLDATALOAD': 'Args',
+        'CALLDATACOPY': 'Args',
+        'CALL': 'External_Call',
+        'STATICCALL': 'External_Call',
+        'MLOAD': 'Memory_Data',
+        'CONST': 'Hardcoded_Constant'
+    }
+
+    # ================= 核心修复：定义优先级权重 =================
+    PRIORITY_MAP = {
+        'CALLER': 100, 'ORIGIN': 100,
+        'CALLVALUE': 90,
+        'CALLDATALOAD': 80, 'CALLDATACOPY': 80,
+        'SLOAD': 70,  # SLOAD 的权重高达 70
+        'CALL': 60, 'STATICCALL': 60,
+        'MLOAD': 50,
+        'CONST': 10  # CONST 权重最低，只有 10
+    }
+
+    # 1. 向上寻找核心比较指令
+    current_nodes = list(predicate_subgraph.predecessors(jumpi_stmt))
+    comparator_stmt = None
+    comparator_op = None
+
+    depth = 0
+    while current_nodes and depth < 3:
+        next_nodes = []
+        for node in current_nodes:
+            op = opcode_dict.get(node, "UNKNOWN")
+            if op in BINARY_COMPARES:
+                comparator_stmt = node
+                comparator_op = op
+                break
+            if op in {'ISZERO', 'AND', 'OR', 'NOT'}:
+                next_nodes.extend(list(predicate_subgraph.predecessors(node)))
+
+        if comparator_stmt:
+            break
+        current_nodes = next_nodes
+        depth += 1
+
+    # 2. 分类回溯：解析分支
+    if comparator_stmt:
+        operands = list(predicate_subgraph.predecessors(comparator_stmt))
+        operand_semantics = []
+
+        for operand in operands:
+            best_semantic = "Computed_Value"
+            best_score = -1  # 记录当前分支找到的最高优先级分数
+
+            ancestors = nx.ancestors(predicate_subgraph, operand)
+            branch_nodes = set(ancestors)
+            branch_nodes.add(operand)
+
+            # 遍历该分支的所有节点，寻找最高优先级的语义！
+            branch_sources = []
+
+            for node in branch_nodes:
+                op = opcode_dict.get(node, "UNKNOWN")
+                if op == 'SLOAD':
+                    storage_name = sload_semantics_dict.get(node, "Unknown_Slot")
+                    branch_sources.append(f"Storage[{storage_name}]")
+                elif op in STATIC_SEMANTIC_SOURCES:
+                    # 过滤掉低价值的 CONST，只保留高价值信息
+                    if op != 'CONST':
+                        branch_sources.append(STATIC_SEMANTIC_SOURCES[op])
+
+            # 如果分支里什么高价值的东西都没有，再看有没有 CONST
+            if not branch_sources:
+                if any(opcode_dict.get(n) == 'CONST' for n in branch_nodes):
+                    best_semantic = "Hardcoded_Constant"
+                else:
+                    best_semantic = "Computed_Value"
+            else:
+                # 核心改动：把找到的所有源用 "+" 拼接起来！
+                # 比如：[External_Call + Storage[fee] GT Hardcoded_Constant]
+                best_semantic = " + ".join(list(set(branch_sources)))
+            # for node in branch_nodes:
+            #     op = opcode_dict.get(node, "UNKNOWN")
+            #
+            #     if op == 'SLOAD':
+            #         score = PRIORITY_MAP['SLOAD']
+            #         if score > best_score:
+            #             best_score = score
+            #             storage_name = sload_semantics_dict.get(node, "Unknown_Slot")
+            #             best_semantic = f"Storage[{storage_name}]"
+            #
+            #     elif op in STATIC_SEMANTIC_SOURCES:
+            #         score = PRIORITY_MAP.get(op, 0)
+            #         if score > best_score:
+            #             best_score = score
+            #             best_semantic = STATIC_SEMANTIC_SOURCES[op]
+
+            operand_semantics.append(best_semantic)
+
+        # 组装二元比较语义
+        if len(operand_semantics) == 2:
+            return f"[{operand_semantics[0]} {comparator_op} {operand_semantics[1]}]"
+        elif len(operand_semantics) == 1:
+            return f"[{operand_semantics[0]} {comparator_op} ?]"
+        else:
+            return f"[Complex_Comparison {comparator_op}]"
+
+    # 3. 解析布尔单目运算
+    else:
+        best_semantic = "Unknown Condition"
+        best_score = -1
+
+        for node in predicate_subgraph.nodes():
+            op = opcode_dict.get(node)
+            if op == 'SLOAD':
+                score = PRIORITY_MAP['SLOAD']
+                if score > best_score:
+                    best_score = score
+                    storage_name = sload_semantics_dict.get(node, "Unknown_Slot")
+                    best_semantic = f"Boolean Check on: Storage[{storage_name}]"
+            elif op in STATIC_SEMANTIC_SOURCES:
+                score = PRIORITY_MAP.get(op, 0)
+                if score > best_score:
+                    best_score = score
+                    best_semantic = f"Boolean Check on: {STATIC_SEMANTIC_SOURCES[op]}"
+
+        return f"[{best_semantic}]"
+
+def analyze_slice_semantics_accurate(predicate_subgraph, jumpi_stmt, DDG, opcode_dict, sload_semantics_dict):
+    """
+    基于“语义边界阻断”的终极解析器。
+    完美解决 CALL 参数、SLOAD 哈希计算中混入其他变量导致的语义漂移。
+    """
+    BINARY_COMPARES = {'EQ', 'LT', 'GT', 'SLT', 'SGT'}
+
+    STATIC_SEMANTIC_SOURCES = {
+        'CALLER': 'msg.sender',
+        'ORIGIN': 'tx.origin',
+        'CALLVALUE': 'msg.value',
+        'CALLDATALOAD': 'Args',
+        'CALLDATACOPY': 'Args',
+        'MLOAD': 'Memory_Data'
+    }
+
+    # ================= 核心：局部 BFS 边界追踪器 =================
+    def trace_semantic_boundary(start_node):
+        """
+        从某个操作数开始向上回溯，碰到高维语义节点就记录并停止该分支。
+        """
+        queue = [start_node]
+        visited = set()
+        found_semantics = set()
+
+        while queue:
+            curr = queue.pop(0)
+            if curr in visited:
+                continue
+            visited.add(curr)
+
+            op = opcode_dict.get(curr, "UNKNOWN")
+
+            # 【边界 1】：如果碰到状态读取，立刻停止当前分支的向上探索
+            if op == 'SLOAD':
+                storage_name = sload_semantics_dict.get(curr, "Unknown_Slot")
+                found_semantics.add(f"Storage[{storage_name}]")
+                continue  # 核心！不把 predecessors 加入 queue，阻断回溯！
+
+            # 【边界 2】：如果碰到外部调用，立刻停止
+            elif op in {'CALL', 'STATICCALL'}:
+                found_semantics.add("External_Call")
+                continue  # 阻断回溯！不再去分析 CALL 的输入参数
+
+            # 【普通语义】：如果是基础数据源，记录并停止
+            elif op in STATIC_SEMANTIC_SOURCES:
+                found_semantics.add(STATIC_SEMANTIC_SOURCES[op])
+                continue
+
+            # 【常量兜底】：如果是 CONST，我们不阻断（因为它可能是位掩码），留到最后判断
+            elif op == 'CONST':
+                pass
+
+                # 如果是中间计算节点 (如 ADD, SHA3, ISZERO, AND)，继续向上回溯其前驱节点
+            for pred in predicate_subgraph.predecessors(curr):
+                queue.append(pred)
+
+        # 结果汇总
+        if not found_semantics:
+            if any(opcode_dict.get(n) == 'CONST' for n in visited):
+                return "Hardcoded_Constant"
+            return "Computed_Value"
+
+        return " + ".join(list(found_semantics))
+
+    # ============================================================
+
+    # 1. 向上寻找核心比较指令
+    current_nodes = list(predicate_subgraph.predecessors(jumpi_stmt))
+    comparator_stmt = None
+    comparator_op = None
+
+    depth = 0
+    while current_nodes and depth < 3:
+        next_nodes = []
+        for node in current_nodes:
+            op = opcode_dict.get(node, "UNKNOWN")
+            if op in BINARY_COMPARES:
+                comparator_stmt = node
+                comparator_op = op
+                break
+            if op in {'ISZERO', 'AND', 'OR', 'NOT'}:
+                next_nodes.extend(list(predicate_subgraph.predecessors(node)))
+
+        if comparator_stmt:
+            break
+        current_nodes = next_nodes
+        depth += 1
+
+    # 2. 如果找到了二元比较 (如 LT, EQ)
+    if comparator_stmt:
+        operands = list(predicate_subgraph.predecessors(comparator_stmt))
+        operand_semantics = []
+
+        for operand in operands:
+            # 使用追踪器解析每个输入端
+            sem = trace_semantic_boundary(operand)
+            operand_semantics.append(sem)
+
+        if len(operand_semantics) == 2:
+            return f"[{operand_semantics[0]} {comparator_op} {operand_semantics[1]}]"
+        elif len(operand_semantics) == 1:
+            return f"[{operand_semantics[0]} {comparator_op} ?]"
+        else:
+            return f"[Complex_Comparison {comparator_op}]"
+
+    # 3. 如果没找到二元比较，说明是布尔单目运算 (比如 JUMPI 判断 CALL 的返回值)
+    else:
+        boolean_sources = set()
+        for pred in predicate_subgraph.predecessors(jumpi_stmt):
+            sem = trace_semantic_boundary(pred)
+            if sem != "Hardcoded_Constant" and sem != "Computed_Value":
+                boolean_sources.add(sem)
+
+        if boolean_sources:
+            # ==== 锦上添花：区分常规变量和外部调用 ====
+            sources_str = ', '.join(boolean_sources)
+            if "Storage" in sources_str or "Args" in sources_str or "msg." in sources_str:
+                return f"[Existence/Non-Zero Check on: {sources_str}]"
+            elif "External_Call" in sources_str:
+                return f"[Success/Failure Check on: {sources_str}]"
+            else:
+                return f"[Boolean Check on: {sources_str}]"
+        else:
+            return "[Unknown Boolean Check]"
 
 if __name__ == "__main__":
     # b, graph_index = generate_ListandGraph(CONTRACT_ARTIFACTS_PATH)

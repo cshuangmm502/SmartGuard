@@ -11,7 +11,7 @@ from tac_analyze_scripts.help_function import output_Graph_to_file
 from xCFG import build_global_cfg, build_fcg, build_data_dependency_graph, \
     get_true_auth_blocks_with_debug, get_precise_auth_info, extract_sload_to_jumpi_paths, extract_caller_to_jumpi_paths, \
     extract_function_args_to_jumpi, extract_arg_state_rendezvous, extract_caller_state_rendezvous, \
-    extract_value_state_rendezvous
+    extract_value_state_rendezvous, extract_predicate_slices
 
 
 def load_csv_from_gig(artifacts_dir, contract_name):
@@ -45,7 +45,7 @@ def load_csv_from_gig(artifacts_dir, contract_name):
 
 
 def vulnerability_analysis(artifacts_path, contract_name):
-    out_dir = Path(artifacts_path / "output_debug")
+    # out_dir = Path(artifacts_path / "output_debug")
     (df_opcodes, df_defines, df_uses, df_stmts_in_block, df_var_values, df_mapping_slot, df_block_in_func,
      df_formalArgs, df_publicArgs, df_sign_eventName, df_blockEdge,
      df_functionCall, df_functionReturn, df_publicFunction, df_decompiled_codes) = (
@@ -67,25 +67,30 @@ def vulnerability_analysis(artifacts_path, contract_name):
     events = extract_all_events(df_opcodes, df_var_values, df_uses, df_sign_eventName, df_stmts_in_block)
     # events.to_excel(out_dir / "events.xlsx", index=False)
     global_cfg = build_global_cfg(artifacts_path, df_blockEdge, df_functionCall, df_functionReturn, df_publicFunction, events)
-    # output_Graph_to_file(global_cfg, 'global_cfg', artifacts_path)
+    output_Graph_to_file(global_cfg, 'global_cfg', artifacts_path)
     fcg, emitting_functions, informing_functions = build_fcg(artifacts_path, df_functionCall, df_block_in_func, events)
     # #支配树授权块
     ddg = build_data_dependency_graph(df_defines, df_uses)
-    # # 提取arg和状态交汇的检查块
+    sload_semantics_dict = storage.set_index('stmtID')['semantic'].to_dict()
+    test = extract_predicate_slices(ddg, df_opcodes, df_stmts_in_block, sload_semantics_dict)
+
+    # print(test)
+
+    # # 提取arg和状态交汇的检查块(严格的检查块规则)
     df_allArgs = pd.concat([df_publicArgs, df_formalArgs], ignore_index=True)
     TRUE_AUTH_BLOCKS_PUBLICARGS = extract_arg_state_rendezvous(ddg, df_defines, df_allArgs, df_opcodes,
                                                                df_stmts_in_block)
     # print(TRUE_AUTH_BLOCKS_PUBLICARGS)
-    # 提取caller和状态交汇的检查块
+    # 提取caller和状态交汇的检查块(严格的检查块规则)
     CALLER_STATE_AUTH_BLOCKS = extract_caller_state_rendezvous(ddg, df_opcodes, df_stmts_in_block)
     # print(CALLER_STATE_AUTH_BLOCKS)
     # 提取CALLPRIVATE调用块作为备选检查块（因为检查可能委托给另一函数内部进行）
 
-    # 提取msg.value和状态交汇的检查块
+    # 提取msg.value和状态交汇的检查块(严格的检查块规则)
     CALLVALUE_STATE_AUTH_BLOCKS = extract_value_state_rendezvous(ddg, df_opcodes, df_stmts_in_block)
     # print(CALLVALUE_STATE_AUTH_BLOCKS)
     Manual_check_block = ['0x31eaB0x2327B0x253dB0xe96']
-    AUTH_BLOCKS = list(TRUE_AUTH_BLOCKS_PUBLICARGS) + list(CALLER_STATE_AUTH_BLOCKS) +list(CALLVALUE_STATE_AUTH_BLOCKS) + Manual_check_block
+    AUTH_BLOCKS = list(TRUE_AUTH_BLOCKS_PUBLICARGS) + list(CALLER_STATE_AUTH_BLOCKS) +list(CALLVALUE_STATE_AUTH_BLOCKS) + Manual_check_block + list(test)
     # print(AUTH_BLOCKS)
     POTENTIAL_AUTH_BLOCKS = list(df_functionCall.iloc[:, 0])
     print(POTENTIAL_AUTH_BLOCKS)
@@ -94,14 +99,13 @@ def vulnerability_analysis(artifacts_path, contract_name):
                 df_functionReturn, AUTH_BLOCKS, POTENTIAL_AUTH_BLOCKS)
 
 
-
-
 # def function extract_Auth_Blocks()
 
 # python3 main.py
 if __name__ == "__main__":
     PROJECT_ROOT = Path(__file__).resolve().parent
     CONTRACTS_PATH = PROJECT_ROOT / "contracts"
+    # CONTRACT_NAME = "0x0cD79409eD80d8a153A3c729aa1f8b5D44A29282"
     CONTRACT_NAME = "ChainSwap"
     CONTRACT_ARTIFACTS_PATH = CONTRACTS_PATH / CONTRACT_NAME
     vulnerability_analysis(CONTRACT_ARTIFACTS_PATH, CONTRACT_NAME)

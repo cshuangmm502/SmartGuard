@@ -205,7 +205,9 @@ def extract_all_storage(df_opcodes, df_defines, df_uses, df_var_values, df_mappi
                     pass
 
                     # 🎯 最终格式化为 反编译器的 `bytes X to Y`
-        if byte_size == 32 and byte_offset == 0:
+        if sload_type == 1 or sload_type == 2:
+            pack_info = "bytes 0 to 31"
+        elif byte_size == 32 and byte_offset == 0:
             pack_info = "bytes 0 to 31"
         else:
             is_package_slot = True
