@@ -2,34 +2,10 @@ from pathlib import Path
 import pandas as pd
 
 
-# def extract_all_events(path: Path):
-#     artifacts_dir = Path(path).resolve()
-#     out_dir = artifacts_dir / "out"
-#
-#     print("🚀 正在加载 Gigahorse 提取的 TAC 数据库...")
-#     opcodes = pd.read_csv(out_dir / "TAC_Op.csv", names=['stmt', 'opcode'], sep='\t')
-#     var_value = pd.read_csv(out_dir / "TAC_Variable_Value.csv", names=['var', 'value'], sep='\t')
-#     uses = pd.read_csv(out_dir / "TAC_Use.csv", names=['stmt', 'var', 'index'], sep='\t')
-#     sign_eventname = pd.read_csv(out_dir / "EventSignatureInContract.csv", names=['signature', 'event_name'], sep='\t')
-#     stmt_block = pd.read_csv(out_dir / "TAC_Block.csv", names=['stmt', 'blockID'], sep='\t')
-#
-#     # print("\n🔍 正在提取 event 使用情况...\n")
-#
-#     event_stmts = opcodes[opcodes['opcode'].isin(['LOG1', 'LOG2', 'LOG3', 'LOG4'])].copy()
-#
-#     topic0_vars = uses[
-#         (uses['stmt'].isin(event_stmts['stmt'])) &
-#         (uses['index'] == 2)
-#         ].copy()
-#
-#     topic0_with_sign = topic0_vars.merge(var_value, on='var', how='left')
-#     topic0_with_sign = topic0_with_sign.rename(columns={'value': 'signature'})
-#     topic0_with_name = topic0_with_sign.merge(sign_eventname, on='signature', how='left')
-#     events = topic0_with_name.merge(stmt_block, on='stmt', how='left')
-#     events = events[['stmt', 'signature', 'event_name', 'blockID']]
-#
-#     return events
-#
+CUSTOM_EVENT_SIGNATURES = {
+    "0x5d0634fe981be85c22e2942a880821b70095d84e152c3ea3c17a4e4250d9d61":
+        "LogSwapin(bytes32,address,uint256)",
+}
 
 def extract_all_storage(df_opcodes, df_defines, df_uses, df_var_values, df_mapping_slot, df_stmts_in_block,
                         storage_semantic):
@@ -437,5 +413,138 @@ def extract_all_events(df_opcodes, df_var_values, df_uses, df_sign_eventName, df
     topic0_with_name = topic0_with_sign.merge(sign_eventName, on='signature', how='left')
     events = topic0_with_name.merge(stmt_block, on='stmtID', how='left')
     events = events[['stmtID', 'signature', 'event_name', 'blockID']]
+    events = fill_missing_event_names(events, CUSTOM_EVENT_SIGNATURES)
+    return events
+
+def normalize_event_signature(sig):
+    """
+    Normalize event topic0 signature.
+    Example:
+        5d06...d61  -> 0x5d06...d61
+        0X5D06...   -> 0x5d06...
+    """
+    if pd.isna(sig):
+        return None
+
+    sig = str(sig).strip().lower()
+
+    if not sig:
+        return None
+
+    if not sig.startswith("0x"):
+        sig = "0x" + sig
+
+    return sig
+
+
+def is_missing_event_name(name):
+    """
+    Treat NaN, None, empty string, and common placeholders as missing.
+    """
+    if pd.isna(name):
+        return True
+
+    name = str(name).strip()
+
+    return name == "" or name.lower() in {
+        "unknown",
+        "none",
+        "nan",
+        "null",
+        "-"
+    }
+
+
+def fill_missing_event_names(events: pd.DataFrame, custom_event_map=None, overwrite=False):
+    """
+    Fill missing event_name values according to event signature.
+
+    Parameters
+    ----------
+    events : pd.DataFrame
+        Expected columns:
+            stmtID, signature, event_name, blockID
+
+    custom_event_map : dict
+        Mapping from topic0 hash to event canonical signature.
+        Example:
+            {
+                "0x5d06...d61": "LogSwapin(bytes32,address,uint256)"
+            }
+
+    overwrite : bool
+        False by default.
+        If False, only fill rows whose event_name is missing.
+        If True, overwrite event_name whenever signature exists in custom_event_map.
+
+    Returns
+    -------
+    pd.DataFrame
+        A new dataframe with completed event_name values.
+    """
+
+    if custom_event_map is None:
+        custom_event_map = {}
+
+    # Normalize custom map keys.
+    normalized_map = {
+        normalize_event_signature(k): v
+        for k, v in custom_event_map.items()
+        if normalize_event_signature(k) is not None
+    }
+
+    events = events.copy()
+
+    # Ensure required columns exist.
+    required_cols = {"stmtID", "signature", "event_name", "blockID"}
+    missing_cols = required_cols - set(events.columns)
+    if missing_cols:
+        raise ValueError(f"Missing required columns: {missing_cols}")
+
+    # Normalize signature for matching.
+    events["_normalized_signature"] = events["signature"].apply(normalize_event_signature)
+
+    for idx, row in events.iterrows():
+        sig = row["_normalized_signature"]
+
+        if sig not in normalized_map:
+            continue
+
+        if overwrite or is_missing_event_name(row["event_name"]):
+            events.at[idx, "event_name"] = normalized_map[sig]
+
+    events = events.drop(columns=["_normalized_signature"])
 
     return events
+
+def load_custom_event_map(path: str):
+    """
+    Load custom event signature map from TSV file.
+
+    File format:
+        topic0<TAB>event_signature
+
+    Example:
+        0x5d0634...d61    LogSwapin(bytes32,address,uint256)
+    """
+    custom_map = {}
+
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+
+            if not line or line.startswith("#"):
+                continue
+
+            parts = line.split("\t")
+
+            if len(parts) < 2:
+                continue
+
+            sig = normalize_event_signature(parts[0])
+            event_name = parts[1].strip()
+
+            if sig and event_name:
+                custom_map[sig] = event_name
+
+    return custom_map

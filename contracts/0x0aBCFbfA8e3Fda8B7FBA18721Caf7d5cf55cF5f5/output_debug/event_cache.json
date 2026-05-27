@@ -2,5 +2,6 @@
     "LogSwapout(address,uint256,string)": "WITHDRAWAL",
     "Approval(address,address,uint256)": "OTHER",
     "Transfer(address,address,uint256)": "OTHER",
-    "LogChangeDCRMOwner(address,address,uint256)": "OTHER"
+    "LogChangeDCRMOwner(address,address,uint256)": "OTHER",
+    "LogSwapin(bytes32,address,uint256)": "DEPOSIT"
 }

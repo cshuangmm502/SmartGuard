@@ -1,8 +1,13 @@
+import http
+import os
+
+import httpx
 import requests
 import json
 from pathlib import Path
 import re
 import time
+from openai import OpenAI
 
 
 def robust_extract_category(text):
@@ -51,6 +56,7 @@ def robust_extract_category(text):
 
     return None, None
 
+
 def classify_event_with_agent(artifacts_path, event_signature, path="event_cache.json"):
     """
     使用 LLM 分析事件语义（带重试和暴力解析）。
@@ -85,7 +91,7 @@ def classify_event_with_agent(artifacts_path, event_signature, path="event_cache
         try:
             print(f"🤖 Agent Analyzing ({attempt + 1}/{max_retries}): {event_signature}")
 
-            response = call_llm_api(event_signature)
+            response = call_llm_api_event_analysis(event_signature)
 
             if response.status_code != 200:
                 print(f"   API Error: {response.status_code}")
@@ -117,7 +123,8 @@ def classify_event_with_agent(artifacts_path, event_signature, path="event_cache
 
     return category
 
-def call_llm_api(prompt):
+
+def call_llm_api_event_analysis(prompt):
     url = "http://jeniya.cn/v1/chat/completions"
     headers = {
         'Accept': 'application/json',
@@ -164,7 +171,225 @@ def call_llm_api(prompt):
     return response
 
 
+def call_llm_api_ac_check(guard_blocks, guard_info):
+    conn = http.client.HTTPSConnection("jeniya.cn")
+    payload = json.dumps({
+        "model": "gpt-5.4",
+        "messages": [
+            {
+                "role": "system",
+                "content": """
+                You are a smart contract static-analysis agent.
+
+                Task:
+                Given guard blocks extracted from dominator-tree analysis of a TAC path, decide whether the path is protected by a SUPPORTNESS_CHECK.
+
+                SUPPORTNESS_CHECK means a guarding condition validates whether a cross-chain operation is supported or valid, such as:
+                - supported source/destination chain or domain
+                - resourceID to contract address mapping
+                - contract address to resourceID mapping
+                - contract whitelist
+                - supported token ID/address/index
+                - burn/mint/lock token support list
+                - available router/handler
+                - deposit/processed record used for replay or duplicate prevention
+
+                Known supportness indicators:
+                domainID, chainID, support, resourceIDToContractAddress,
+                contractAddressToResourceID, contractWhitelist, allTokenIDs,
+                tokenByEVMAddress, tokenIndex, burnList, availableRouters,
+                depositRecords.
+
+                Decision rules:
+                1. A SUPPORTNESS_CHECK requires a guard condition, not just variable occurrence.
+                2. If a guard uses a recovered supportness variable, output YES.
+                3. If a guard uses only generic SLOAD such as stor_7 without recovered semantic name, output POSSIBLE only when the constraint looks like chain/resource/token/router support validation.
+                4. CALLER/msg.sender checks are authorization checks, not supportness checks.
+                5. msg.value checks are payment/business constraints, not supportness checks.
+                6. fee, owner, admin, role, pause, relayer, signer, oracle, threshold, and generic amount checks are not supportness checks.
+                7. If evidence is insufficient, output NO or POSSIBLE conservatively.
+
+                Output JSON only.
+                """
+            },
+            {
+                "role": "user",
+                "content": f"""
+                Protected guard blocks:
+                {guard_blocks}
+
+                Guard block details:
+                {guard_info}
+
+                Return exactly:
+                {{
+                  "semantic_supportness_check": "YES|POSSIBLE|NO",
+                  "is_path_relevant": true,
+                  "confidence": "HIGH|MEDIUM|LOW",
+                  "supportness_evidence": [
+                    {{
+                      "block": "block id",
+                      "constraint": "short constraint",
+                      "variable": "variable or storage name",
+                      "role": "CHAIN_SUPPORT|RESOURCE_MAPPING|CONTRACT_WHITELIST|TOKEN_SUPPORT|ROUTER_SUPPORT|RECORD_CHECK|GENERIC_SUPPORT_MAP",
+                      "strength": "HIGH|MEDIUM|LOW"
+                    }}
+                  ],
+                  "non_support_guards": [
+                    {{
+                      "block": "block id",
+                      "type": "AUTHORIZATION|PAYMENT|BUSINESS_CONSTRAINT|UNKNOWN_STORAGE|OTHER",
+                      "reason": "short reason"
+                    }}
+                  ],
+                  "reason": "short reason"
+                }}
+                """
+            }
+        ]
+    })
+    headers = {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer sk-FKWJV2ihsuWQ4SJ8PW7T0mtYxJL9DyHnAxVod9kf8BuS1Mf3',
+        'Content-Type': 'application/json'
+    }
+    conn.request("POST", "/v1/chat/completions", payload, headers)
+    res = conn.getresponse()
+    return res
+
+def call_llm_api_repetitiveness_check(guard_blocks, guard_info):
+    conn = http.client.HTTPSConnection("jeniya.cn")
+    payload = json.dumps({
+        "model": "gpt-5.4",
+        "messages": [
+            {
+                "role": "system",
+                "content": """
+                    You are a smart contract static-analysis agent.
+
+                    Task:
+                    Given guard blocks extracted from dominator-tree analysis of a TAC path, decide whether the path is protected by a REPETITIVENESS_CHECK.
+
+                    REPETITIVENESS_CHECK means a guarding condition prevents repeated or replayed operations, including:
+                    - repeated cross-chain withdrawal or execution
+                    - repeated handling of the same deposit/request/message
+                    - repeated use of the same nonce
+                    - repeated voting on the same proposal
+                    - duplicate claim, redeem, release, or message execution
+
+                    Known repetitiveness knowledge:
+                    list, account, hasVotedOnProposal, depositRecords, nonces.
+
+                    Roles:
+                    - VOTE_RECORD: hasVotedOnProposal or proposal vote record
+                    - DEPOSIT_RECORD: depositRecords or deposit/request processing record
+                    - NONCE_RECORD: nonces or used nonce record
+                    - PROCESSED_RECORD: processed/executed/claimed/used/completed message or tx record
+                    - GENERIC_RECORD: list, account, generic mapping/list used as a duplicate record
+                    - NON_REPETITIVENESS: owner, admin, fee, pause, relayer, signer, threshold, amount, token, msg.value, msg.sender authorization
+
+                    Decision rules:
+                    1. A REPETITIVENESS_CHECK requires a guard condition, not just variable occurrence.
+                    2. If a guard uses hasVotedOnProposal, depositRecords, or nonces, output YES.
+                    3. If a guard uses processed, executed, claimed, used, completed, consumed, handled, or message record variables, output YES or POSSIBLE even if they are not in the SmartAxe list.
+                    4. If a guard uses only generic names such as list or account, output POSSIBLE unless the constraint clearly indicates duplicate/replay prevention.
+                    5. CALLER/msg.sender checks are authorization checks, not repetitiveness checks.
+                    6. msg.value checks are payment/business constraints, not repetitiveness checks.
+                    7. Fee, owner, admin, role, pause, relayer, signer, oracle, threshold, and generic amount checks are not repetitiveness checks.
+                    8. If evidence is insufficient, output NO or POSSIBLE conservatively.
+                    
+                    Output JSON only.
+                    """
+            },
+            {
+                "role": "user",
+                "content": f"""
+                    Protected guard blocks:
+                    {guard_blocks}
+
+                    Guard block details:
+                    {guard_info}
+
+                    Return exactly:
+                    {{
+                      "knowledge_base_match": "YES|NO",
+                      "semantic_repetitiveness_check": "YES|POSSIBLE|NO",
+                      "is_path_relevant": true,
+                      "confidence": "HIGH|MEDIUM|LOW",
+                      "repetitiveness_evidence": [
+                        {{
+                          "block": "block id",
+                          "constraint": "short constraint",
+                          "variable": "variable or storage name",
+                          "role": "VOTE_RECORD|DEPOSIT_RECORD|NONCE_RECORD|PROCESSED_RECORD|GENERIC_RECORD",
+                          "strength": "HIGH|MEDIUM|LOW"
+                        }}
+                      ],
+                      "non_repetitiveness_guards": [
+                        {{
+                          "block": "block id",
+                          "type": "AUTHORIZATION|PAYMENT|BUSINESS_CONSTRAINT|UNKNOWN_STORAGE|OTHER",
+                          "reason": "short reason"
+                        }}
+                      ],
+                      "reason": "short reason"
+                    }}
+                    """
+            }
+        ]
+    })
+    headers = {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer sk-FKWJV2ihsuWQ4SJ8PW7T0mtYxJL9DyHnAxVod9kf8BuS1Mf3',
+        'Content-Type': 'application/json'
+    }
+    conn.request("POST", "/v1/chat/completions", payload, headers)
+    res = conn.getresponse()
+    return res
+
+
 # python3 main.py
 if __name__ == "__main__":
-    result = call_llm_api("Send(address,uint256,address,uint256,uint256)")
+    os.environ["http_proxy"] = "http://localhost:7890"
+    os.environ["https_proxy"] = "http://localhost:7890"
+    guard_info = ("\"0x0\": \"业务约束逻辑: [Existence/Non-Zero Check on: msg.value]; 业务约束逻辑: [Existence/Non-Zero Check on: "
+                  "msg.value]\",\"0x60b\": \"业务约束逻辑: [Storage[stor_7] LT Computed_Value]; 驱动此判断的数据源: SLOAD\","
+                  "\"0x99d\": \"业务约束逻辑: [Hardcoded_Constant EQ msg.sender]; 驱动此判断的数据源: CALLER\"")
+    guard_blocks = "0x99d", "0x60b", "0x0"
+
+    result = call_llm_api_ac_check(guard_blocks, guard_info)
+
+    raw = result.read().decode("utf-8")
+    # 第一层：解析 API 返回的整体 JSON
+    resp = json.loads(raw)
+    # 可选：先检查 HTTP/API 层是否异常
+    if result.status != 200:
+        print("HTTP Error:", result.status)
+        print(resp)
+        raise RuntimeError("API request failed")
+
+    # 第二层：取出模型实际回复内容
+    content = resp["choices"][0]["message"]["content"]
+
+
+    # 第三层：清理 markdown json 代码块
+    def extract_json_text(text: str) -> str:
+        text = text.strip()
+
+        # 匹配 ```json ... ``` 或 ``` ... ```
+        m = re.match(r"^```(?:json)?\s*(.*?)\s*```$", text, re.DOTALL)
+        if m:
+            return m.group(1).strip()
+
+        return text
+
+
+    json_text = extract_json_text(content)
+
+    # 第四层：解析模型返回的 JSON 内容
+    result = json.loads(json_text)
+
     print(result)
+    print(result["semantic_supportness_check"])
+    print(result["confidence"])
+    print(result["reason"])

@@ -45,7 +45,7 @@ def load_csv_from_gig(artifacts_dir, contract_name):
 
 
 def vulnerability_analysis(artifacts_path, contract_name):
-    # out_dir = Path(artifacts_path / "output_debug")
+    out_dir = Path(artifacts_path / "output_debug")
     (df_opcodes, df_defines, df_uses, df_stmts_in_block, df_var_values, df_mapping_slot, df_block_in_func,
      df_formalArgs, df_publicArgs, df_sign_eventName, df_blockEdge,
      df_functionCall, df_functionReturn, df_publicFunction, df_decompiled_codes) = (
@@ -65,9 +65,10 @@ def vulnerability_analysis(artifacts_path, contract_name):
     # # # b, graph_index = generate_ListandGraph(tac_file)
     #
     events = extract_all_events(df_opcodes, df_var_values, df_uses, df_sign_eventName, df_stmts_in_block)
-    # events.to_excel(out_dir / "events.xlsx", index=False)
+    print(events)
+    events.to_excel(out_dir / "events.xlsx", index=False)
     global_cfg = build_global_cfg(artifacts_path, df_blockEdge, df_functionCall, df_functionReturn, df_publicFunction, events)
-    output_Graph_to_file(global_cfg, 'global_cfg', artifacts_path)
+    # output_Graph_to_file(global_cfg, 'global_cfg', artifacts_path)
     fcg, emitting_functions, informing_functions = build_fcg(artifacts_path, df_functionCall, df_block_in_func, events)
     # #支配树授权块
     ddg = build_data_dependency_graph(df_defines, df_uses)
@@ -106,7 +107,8 @@ if __name__ == "__main__":
     PROJECT_ROOT = Path(__file__).resolve().parent
     CONTRACTS_PATH = PROJECT_ROOT / "contracts"
     # CONTRACT_NAME = "0x0cD79409eD80d8a153A3c729aa1f8b5D44A29282"
-    CONTRACT_NAME = "ChainSwap"
+    # CONTRACT_NAME = "ChainSwap"
+    CONTRACT_NAME = "0x0aBCFbfA8e3Fda8B7FBA18721Caf7d5cf55cF5f5"
     CONTRACT_ARTIFACTS_PATH = CONTRACTS_PATH / CONTRACT_NAME
     vulnerability_analysis(CONTRACT_ARTIFACTS_PATH, CONTRACT_NAME)
     # readFile(CONTRACT_ARTIFACTS_PATH)

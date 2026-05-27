@@ -20,6 +20,7 @@ LogSwapout(address, uint256, string);
 LogChangeDCRMOwner(address, address, uint256);
 Approval(address, address, uint256);
 Transfer(address, address, uint256);
+LogSwapin(bytes32, address, uint256);
 
 function name() public payable { 
     v0 = new bytes[]((_name.length & (!(_name.length & 0x1) << 8) + ~0) >> 1);
