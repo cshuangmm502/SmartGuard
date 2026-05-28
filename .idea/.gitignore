@@ -2,14 +2,24 @@
 venv/
 .venv/
 
-# PyCharm / IDE
+# =========================
+# IDE / editor
+# =========================
+.vscode/
 .idea/
 *.iml
+<<<<<<< HEAD
 .idea/workspace.xml
+=======
+*.xml
+>>>>>>> 4808ebc (add llm pipeline)
 
+# =========================
 # Python cache
+# =========================
 __pycache__/
 *.py[cod]
+*$py.class
 
 # Environment / secrets
 .env

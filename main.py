@@ -65,17 +65,15 @@ def vulnerability_analysis(artifacts_path, contract_name):
     # # # b, graph_index = generate_ListandGraph(tac_file)
     #
     events = extract_all_events(df_opcodes, df_var_values, df_uses, df_sign_eventName, df_stmts_in_block)
-    print(events)
+    # print(events)
     events.to_excel(out_dir / "events.xlsx", index=False)
     global_cfg = build_global_cfg(artifacts_path, df_blockEdge, df_functionCall, df_functionReturn, df_publicFunction, events)
     # output_Graph_to_file(global_cfg, 'global_cfg', artifacts_path)
     fcg, emitting_functions, informing_functions = build_fcg(artifacts_path, df_functionCall, df_block_in_func, events)
-    # #支配树授权块
+    # #谓词（CALL、SLOAD、CALLVALUE等）授权块（宽松的检查块）
     ddg = build_data_dependency_graph(df_defines, df_uses)
     sload_semantics_dict = storage.set_index('stmtID')['semantic'].to_dict()
-    test = extract_predicate_slices(ddg, df_opcodes, df_stmts_in_block, sload_semantics_dict)
-
-    # print(test)
+    BASE_CHECK_BLOCKS, checkBlock_des_dict = extract_predicate_slices(ddg, df_opcodes, df_stmts_in_block, sload_semantics_dict)
 
     # # 提取arg和状态交汇的检查块(严格的检查块规则)
     df_allArgs = pd.concat([df_publicArgs, df_formalArgs], ignore_index=True)
@@ -90,14 +88,17 @@ def vulnerability_analysis(artifacts_path, contract_name):
     # 提取msg.value和状态交汇的检查块(严格的检查块规则)
     CALLVALUE_STATE_AUTH_BLOCKS = extract_value_state_rendezvous(ddg, df_opcodes, df_stmts_in_block)
     # print(CALLVALUE_STATE_AUTH_BLOCKS)
-    Manual_check_block = ['0x31eaB0x2327B0x253dB0xe96']
-    AUTH_BLOCKS = list(TRUE_AUTH_BLOCKS_PUBLICARGS) + list(CALLER_STATE_AUTH_BLOCKS) +list(CALLVALUE_STATE_AUTH_BLOCKS) + Manual_check_block + list(test)
+    # 调试用手动注入检查块
+    # Manual_check_block = ['0x31eaB0x2327B0x253dB0xe96']
+    Manual_check_block = []
+    AUTH_BLOCKS = list(TRUE_AUTH_BLOCKS_PUBLICARGS) + list(CALLER_STATE_AUTH_BLOCKS) +list(CALLVALUE_STATE_AUTH_BLOCKS) + Manual_check_block + list(BASE_CHECK_BLOCKS)
     # print(AUTH_BLOCKS)
+    # 提取call指令所在区块视作潜在的检查块（检查逻辑存在于调用函数中的情况），考虑要不要进一步细分外部合约调用
     POTENTIAL_AUTH_BLOCKS = list(df_functionCall.iloc[:, 0])
-    print(POTENTIAL_AUTH_BLOCKS)
+    # print(POTENTIAL_AUTH_BLOCKS)
 
     ACV_analysis(df_functionCall, df_block_in_func, emitting_functions, informing_functions, fcg, global_cfg,
-                df_functionReturn, AUTH_BLOCKS, POTENTIAL_AUTH_BLOCKS)
+                df_functionReturn, AUTH_BLOCKS, POTENTIAL_AUTH_BLOCKS, checkBlock_des_dict)
 
 
 # def function extract_Auth_Blocks()
@@ -107,8 +108,8 @@ if __name__ == "__main__":
     PROJECT_ROOT = Path(__file__).resolve().parent
     CONTRACTS_PATH = PROJECT_ROOT / "contracts"
     # CONTRACT_NAME = "0x0cD79409eD80d8a153A3c729aa1f8b5D44A29282"
-    # CONTRACT_NAME = "ChainSwap"
-    CONTRACT_NAME = "0x0aBCFbfA8e3Fda8B7FBA18721Caf7d5cf55cF5f5"
+    CONTRACT_NAME = "ChainSwap"
+    # CONTRACT_NAME = "0x0aBCFbfA8e3Fda8B7FBA18721Caf7d5cf55cF5f5"
     CONTRACT_ARTIFACTS_PATH = CONTRACTS_PATH / CONTRACT_NAME
     vulnerability_analysis(CONTRACT_ARTIFACTS_PATH, CONTRACT_NAME)
     # readFile(CONTRACT_ARTIFACTS_PATH)

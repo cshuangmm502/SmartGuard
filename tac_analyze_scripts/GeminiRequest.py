@@ -171,7 +171,7 @@ def call_llm_api_event_analysis(prompt):
     return response
 
 
-def call_llm_api_ac_check(guard_blocks, guard_info):
+def call_llm_api_supportness_check(guard_blocks, guard_info):
     conn = http.client.HTTPSConnection("jeniya.cn")
     payload = json.dumps({
         "model": "gpt-5.4",
@@ -250,7 +250,7 @@ def call_llm_api_ac_check(guard_blocks, guard_info):
     })
     headers = {
         'Accept': 'application/json',
-        'Authorization': 'Bearer sk-FKWJV2ihsuWQ4SJ8PW7T0mtYxJL9DyHnAxVod9kf8BuS1Mf3',
+        'Authorization': '',
         'Content-Type': 'application/json'
     }
     conn.request("POST", "/v1/chat/completions", payload, headers)
@@ -340,13 +340,43 @@ def call_llm_api_repetitiveness_check(guard_blocks, guard_info):
     })
     headers = {
         'Accept': 'application/json',
-        'Authorization': 'Bearer sk-FKWJV2ihsuWQ4SJ8PW7T0mtYxJL9DyHnAxVod9kf8BuS1Mf3',
+        'Authorization': '',
         'Content-Type': 'application/json'
     }
     conn.request("POST", "/v1/chat/completions", payload, headers)
     res = conn.getresponse()
     return res
 
+def process_llm_response(result):
+    raw = result.read().decode("utf-8")
+    # 第一层：解析 API 返回的整体 JSON
+    resp = json.loads(raw)
+    # 可选：先检查 HTTP/API 层是否异常
+    if result.status != 200:
+        print("HTTP Error:", result.status)
+        print(resp)
+        raise RuntimeError("API request failed")
+
+    # 第二层：取出模型实际回复内容
+    content = resp["choices"][0]["message"]["content"]
+
+    # 第三层：清理 markdown json 代码块
+    def extract_json_text(text: str) -> str:
+        text = text.strip()
+
+        # 匹配 ```json ... ``` 或 ``` ... ```
+        m = re.match(r"^```(?:json)?\s*(.*?)\s*```$", text, re.DOTALL)
+        if m:
+            return m.group(1).strip()
+
+        return text
+
+    json_text = extract_json_text(content)
+
+    # 第四层：解析模型返回的 JSON 内容
+    result = json.loads(json_text)
+
+    print(result)
 
 # python3 main.py
 if __name__ == "__main__":
@@ -357,7 +387,7 @@ if __name__ == "__main__":
                   "\"0x99d\": \"业务约束逻辑: [Hardcoded_Constant EQ msg.sender]; 驱动此判断的数据源: CALLER\"")
     guard_blocks = "0x99d", "0x60b", "0x0"
 
-    result = call_llm_api_ac_check(guard_blocks, guard_info)
+    result = call_llm_api_supportness_check(guard_blocks, guard_info)
 
     raw = result.read().decode("utf-8")
     # 第一层：解析 API 返回的整体 JSON
