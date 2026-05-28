@@ -2,13 +2,20 @@
 venv/
 .venv/
 
-# PyCharm / IDE
+# =========================
+# IDE / editor
+# =========================
+.vscode/
 .idea/
 *.iml
+*.xml
 
+# =========================
 # Python cache
+# =========================
 __pycache__/
 *.py[cod]
+*$py.class
 
 # Environment / secrets
 .env

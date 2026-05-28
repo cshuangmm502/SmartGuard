@@ -883,6 +883,7 @@ def extract_predicate_slices(DDG, df_opcode, df_block, sload_semantics_dict):
     df_opcode['opcode'] = df_opcode['opcode'].astype(str).str.strip().str.upper()
     opcode_dict = df_opcode.set_index('stmtID')['opcode'].to_dict()
     df_block_dict = df_block.set_index('stmtID')['blockID'].to_dict()
+    checkBlock_des_dict = dict()
     # diagnose_jumpi(DDG, opcode_dict, '0xec1')
     # 1. 定义我们关心的所有关键数据源
     CRITICAL_SOURCES = {'CALLER', 'ORIGIN', 'CALLVALUE', 'SLOAD', 'CALLDATALOAD', 'CALLDATACOPY', 'CALL', 'STATICCALL'}
@@ -947,12 +948,14 @@ def extract_predicate_slices(DDG, df_opcode, df_block, sload_semantics_dict):
         print(f"  📌 驱动此判断的数据源: {source_str}")
         print(f"  📌 谓词复杂度: {len(slice_nodes)} 条指令")
         print("-" * 60)
+        des = f"业务约束逻辑: {semantic_summary},"+f"驱动此判断的数据源: {source_str}"
+        checkBlock_des_dict.setdefault(block_id, des)
 
     # 提取所有合法的 Block ID
     auth_blocks = set(p['block_id'] for p in extracted_predicates if p['block_id'])
 
     print(f"\n[+] 切片提取完毕！共输出 {len(auth_blocks)} 个宽松但有效的守护区块 (AUTH_BLOCKS)。")
-    return auth_blocks
+    return auth_blocks, checkBlock_des_dict
 
 def diagnose_jumpi(DDG, opcode_dict, target_jumpi_stmt):
     print(f"\n[诊断] 正在分析目标 JUMPI: {target_jumpi_stmt}")

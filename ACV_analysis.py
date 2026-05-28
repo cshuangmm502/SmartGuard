@@ -4,28 +4,30 @@ import networkx as nx
 from SC_extract import (extract_used_storage_in_controlflow, extract_used_caller_in_controlFlow,
                         extract_used_callData_in_controlFlow, extract_used_callPubArgs_in_controlFlow,
                         extract_used_callPriArgs_in_controlFlow)
+from tac_analyze_scripts.GeminiRequest import call_llm_api_supportness_check
+
 
 def ACV_analysis(df_functionCall, df_block_in_func, emitting_functions, informing_functions, func_call_graph,
                  global_control_flow_graph, df_functionReturn,
-                 AUTH_BLOCKS, POTENTIAl_AUTH_BLOCKS):
-    print(f"\n=======================================================")
-    print(f"🎯 开始分析源链关键函数 ")
-    print(f"=======================================================")
-    detect_incomplete_AC(df_functionCall, df_block_in_func, emitting_functions, func_call_graph,
-                 global_control_flow_graph, df_functionReturn,
-                 AUTH_BLOCKS, POTENTIAl_AUTH_BLOCKS)
+                 AUTH_BLOCKS, POTENTIAl_AUTH_BLOCKS, checkBlock_des_dict):
+    # print(f"\n=======================================================")
+    # print(f"🎯 开始分析源链关键函数 ")
+    # print(f"=======================================================")
+    # detect_incomplete_AC(df_functionCall, df_block_in_func, emitting_functions, func_call_graph,
+    #              global_control_flow_graph, df_functionReturn,
+    #              AUTH_BLOCKS, POTENTIAl_AUTH_BLOCKS, checkBlock_des_dict)
 
     print(f"\n=======================================================")
     print(f"🎯 开始分析目标链关键函数 ")
     print(f"=======================================================")
     detect_incomplete_AC(df_functionCall, df_block_in_func, informing_functions, func_call_graph,
                          global_control_flow_graph, df_functionReturn,
-                         AUTH_BLOCKS, POTENTIAl_AUTH_BLOCKS)
+                         AUTH_BLOCKS, POTENTIAl_AUTH_BLOCKS, checkBlock_des_dict)
 
 
 def detect_incomplete_AC(df_functionCall, df_block_in_func, target_funcs_info, func_call_graph,
                          global_control_flow_graph,
-                         df_functionReturn, AUTH_BLOCKS, POTENTIAl_AUTH_BLOCKS):
+                         df_functionReturn, AUTH_BLOCKS, POTENTIAl_AUTH_BLOCKS, checkBlock_des_dict):
     # ==========================================
     # 1. 预加载与数据清洗
     # ==========================================
@@ -71,7 +73,7 @@ def detect_incomplete_AC(df_functionCall, df_block_in_func, target_funcs_info, f
 
             # 【新增】：用于记录每一段的详细情况
             hop_details = []
-
+            path_check_blocks = []
             # ==========================================
             # 3. 逐段分析跳跃 (Hop) - 强制分析每一段
             # ==========================================
@@ -137,6 +139,8 @@ def detect_incomplete_AC(df_functionCall, df_block_in_func, target_funcs_info, f
                     "auth_blocks": list(current_hop_auth_blocks) if all_callsites_protected else []
                 })
 
+                path_check_blocks.extend(current_hop_auth_blocks)
+
             # ==========================================
             # 4. 分析最终目标函数内部本身 - 强制执行
             # ==========================================
@@ -187,6 +191,8 @@ def detect_incomplete_AC(df_functionCall, df_block_in_func, target_funcs_info, f
                 "auth_blocks": list(target_auth_blocks) if target_func_is_safe else []
             })
 
+            path_check_blocks.extend(target_auth_blocks)
+
             # ==========================================
             # 5. 记录并输出详细结果
             # ==========================================
@@ -195,6 +201,16 @@ def detect_incomplete_AC(df_functionCall, df_block_in_func, target_funcs_info, f
                 print(f"🟢 结论：路径存在安全检查！提供保护的所有区块: {protecting_blocks}")
             else:
                 print(f"🔴 结论：警告！到达 {event_name} 的路径存在绕过风险 (全程无有效鉴权)")
+
+            # 整条执行路径的守卫块及守卫信息
+            print(f"func_path: {func_path} suffered check blocks: {path_check_blocks}")
+            checks_block_info = []
+            for block in path_check_blocks:
+                checks_block_info.append(checkBlock_des_dict[block])
+
+            supportness_check_result = call_llm_api_supportness_check(path_check_blocks, checks_block_info)
+
+            # is_repetitiveness = call_llm_api_repetitiveness_check(path_check_blocks, checks_block_info)
 
             analysis_report.append({
                 "target_func": target_func,
@@ -206,7 +222,9 @@ def detect_incomplete_AC(df_functionCall, df_block_in_func, target_funcs_info, f
                 "hop_details": hop_details  # 【新增】完整的每段鉴权汇报数据
             })
 
+
     print(f"\n🏁 扫描完成。共分析了 {len(analysis_report)} 条路径。")
+    # print(analysis_report)
     return analysis_report
 
 
