@@ -5,6 +5,7 @@ venv/
 # PyCharm / IDE
 .idea/
 *.iml
+.idea/workspace.xml
 
 # Python cache
 __pycache__/
