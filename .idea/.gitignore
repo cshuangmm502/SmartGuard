@@ -39,3 +39,5 @@ dist/
 *.log
 tmp/
 temp/
+/workspace.xml
+/shelf/
