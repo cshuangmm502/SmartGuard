@@ -1,0 +1,153 @@
+====================================================================================================
+func_path: ['0x0', '0x470']
+suffered check blocks: ['0xd45', '0x18b6', '0x1f33B0x1e03B0x1cb8', '0x17a7', '0x17bf', '0x1963', '0x1e89B0x1e03B0x1cb8', '0xe82', '0x18ce', '0xe6a', '0x17f7']
+
+checks_block_info:
+check block 0xd45 业务约束逻辑: [Hardcoded_Constant EQ Storage[_received]],驱动此判断的数据源: SLOAD 
+check block 0x18b6 业务约束逻辑: [Existence/Non-Zero Check on: Storage[_factory]],驱动此判断的数据源: SLOAD 
+check block 0x1f33B0x1e03B0x1cb8 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: CALL, SLOAD 
+check block 0x17a7 业务约束逻辑: [Existence/Non-Zero Check on: Storage[_factory]],驱动此判断的数据源: SLOAD 
+check block 0x17bf 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: STATICCALL, SLOAD 
+check block 0x1963 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: CALL, SLOAD, CALLVALUE 
+check block 0x1e89B0x1e03B0x1cb8 业务约束逻辑: [Existence/Non-Zero Check on: Storage[_token]],驱动此判断的数据源: SLOAD 
+check block 0xe82 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: STATICCALL, SLOAD 
+check block 0x18ce 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: STATICCALL, SLOAD 
+check block 0xe6a 业务约束逻辑: [Existence/Non-Zero Check on: Storage[_factory]],驱动此判断的数据源: SLOAD 
+check block 0x17f7 业务约束逻辑: [msg.value LT Memory_Data],驱动此判断的数据源: CALLVALUE 
+
+support_check_analysis_result:
+{
+  "semantic_supportness_check": "POSSIBLE",
+  "is_path_relevant": true,
+  "confidence": "LOW",
+  "supportness_evidence": [
+    {
+      "block": "0x1e89B0x1e03B0x1cb8",
+      "constraint": "Existence/Non-Zero Check on storage _token",
+      "variable": "_token",
+      "role": "TOKEN_SUPPORT",
+      "strength": "LOW"
+    }
+  ],
+  "non_support_guards": [
+    {
+      "block": "0xd45",
+      "type": "BUSINESS_CONSTRAINT",
+      "reason": "Hardcoded constant equality on _received looks like business state validation, not supportness"
+    },
+    {
+      "block": "0x18b6",
+      "type": "UNKNOWN_STORAGE",
+      "reason": "Non-zero check on _factory indicates configuration/existence of factory, not clear supportness mapping"
+    },
+    {
+      "block": "0x1f33B0x1e03B0x1cb8",
+      "type": "OTHER",
+      "reason": "External call success check is execution/result validation, not supportness"
+    },
+    {
+      "block": "0x17a7",
+      "type": "UNKNOWN_STORAGE",
+      "reason": "Non-zero check on _factory indicates configuration/existence of factory, not clear supportness mapping"
+    },
+    {
+      "block": "0x17bf",
+      "type": "OTHER",
+      "reason": "External call success check is execution/result validation, not supportness"
+    },
+    {
+      "block": "0x1963",
+      "type": "OTHER",
+      "reason": "External call success check with callvalue is execution/payment related, not supportness"
+    },
+    {
+      "block": "0xe82",
+      "type": "OTHER",
+      "reason": "External staticcall success check is execution/result validation, not supportness"
+    },
+    {
+      "block": "0x18ce",
+      "type": "OTHER",
+      "reason": "External staticcall success check is execution/result validation, not supportness"
+    },
+    {
+      "block": "0xe6a",
+      "type": "UNKNOWN_STORAGE",
+      "reason": "Non-zero check on _factory indicates configuration/existence of factory, not clear supportness mapping"
+    },
+    {
+      "block": "0x17f7",
+      "type": "PAYMENT",
+      "reason": "msg.value comparison is a payment/business constraint, not supportness"
+    }
+  ],
+  "reason": "Most guards are external call success, payment, or generic storage existence checks. Only the non-zero check on recovered storage name _token could weakly indicate token support, but there is no explicit supported-token mapping/list validation."
+}
+
+repeat_check_analysis_result:
+{
+  "knowledge_base_match": "NO",
+  "semantic_repetitiveness_check": "NO",
+  "is_path_relevant": true,
+  "confidence": "HIGH",
+  "repetitiveness_evidence": [],
+  "non_repetitiveness_guards": [
+    {
+      "block": "0xd45",
+      "type": "BUSINESS_CONSTRAINT",
+      "reason": "checks Storage[_received] against a hardcoded constant; no duplicate/replay record semantics"
+    },
+    {
+      "block": "0x18b6",
+      "type": "UNKNOWN_STORAGE",
+      "reason": "non-zero check on Storage[_factory]; factory existence/configuration check, not a replay/duplicate record"
+    },
+    {
+      "block": "0x1f33B0x1e03B0x1cb8",
+      "type": "OTHER",
+      "reason": "external call success/failure check; ensures call succeeded, not that an operation was not already processed"
+    },
+    {
+      "block": "0x17a7",
+      "type": "UNKNOWN_STORAGE",
+      "reason": "non-zero check on Storage[_factory]; configuration/address existence check only"
+    },
+    {
+      "block": "0x17bf",
+      "type": "OTHER",
+      "reason": "staticcall success/failure check; not a nonce/deposit/vote/processed-record guard"
+    },
+    {
+      "block": "0x1963",
+      "type": "OTHER",
+      "reason": "external call success/failure check with CALLVALUE; operational success/payment related, not repetitiveness"
+    },
+    {
+      "block": "0x1e89B0x1e03B0x1cb8",
+      "type": "UNKNOWN_STORAGE",
+      "reason": "non-zero check on Storage[_token]; token address existence/configuration check only"
+    },
+    {
+      "block": "0xe82",
+      "type": "OTHER",
+      "reason": "staticcall success/failure check; no evidence of processed/executed/claimed/nonce tracking"
+    },
+    {
+      "block": "0x18ce",
+      "type": "OTHER",
+      "reason": "staticcall success/failure check; not a duplicate-prevention condition"
+    },
+    {
+      "block": "0xe6a",
+      "type": "UNKNOWN_STORAGE",
+      "reason": "non-zero check on Storage[_factory]; not a repetitiveness record"
+    },
+    {
+      "block": "0x17f7",
+      "type": "PAYMENT",
+      "reason": "msg.value compared with memory data; payment/business constraint, not replay prevention"
+    }
+  ],
+  "reason": "None of the guards reference known repetitiveness records such as hasVotedOnProposal, depositRecords, nonces, or processed/executed/claimed/used/completed mappings. The listed guards are factory/token existence checks, external call success checks, a received flag/constant business constraint, and a msg.value constraint."
+}
+

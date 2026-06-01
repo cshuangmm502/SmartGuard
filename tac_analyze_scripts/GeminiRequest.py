@@ -223,8 +223,7 @@ def call_llm_api_supportness_check(guard_blocks, guard_info):
 
                 Return exactly:
                 {{
-                  "semantic_supportness_check": "YES|POSSIBLE|NO",
-                  "is_path_relevant": true,
+                  "semantic_supportness_check": "YES|NO",
                   "confidence": "HIGH|MEDIUM|LOW",
                   "supportness_evidence": [
                     {{
@@ -250,14 +249,14 @@ def call_llm_api_supportness_check(guard_blocks, guard_info):
     })
     headers = {
         'Accept': 'application/json',
-        'Authorization': '',
+        'Authorization': 'Bearer sk-FKWJV2ihsuWQ4SJ8PW7T0mtYxJL9DyHnAxVod9kf8BuS1Mf3',
         'Content-Type': 'application/json'
     }
     conn.request("POST", "/v1/chat/completions", payload, headers)
     res = conn.getresponse()
     return res
 
-def call_llm_api_repetitiveness_check(guard_blocks, guard_info):
+def call_llm_api_repeat_check(guard_blocks, guard_info):
     conn = http.client.HTTPSConnection("jeniya.cn")
     payload = json.dumps({
         "model": "gpt-5.4",
@@ -312,9 +311,7 @@ def call_llm_api_repetitiveness_check(guard_blocks, guard_info):
 
                     Return exactly:
                     {{
-                      "knowledge_base_match": "YES|NO",
-                      "semantic_repetitiveness_check": "YES|POSSIBLE|NO",
-                      "is_path_relevant": true,
+                      "semantic_repetitiveness_check": "YES|NO",
                       "confidence": "HIGH|MEDIUM|LOW",
                       "repetitiveness_evidence": [
                         {{
@@ -340,7 +337,7 @@ def call_llm_api_repetitiveness_check(guard_blocks, guard_info):
     })
     headers = {
         'Accept': 'application/json',
-        'Authorization': '',
+        'Authorization': 'Bearer sk-FKWJV2ihsuWQ4SJ8PW7T0mtYxJL9DyHnAxVod9kf8BuS1Mf3',
         'Content-Type': 'application/json'
     }
     conn.request("POST", "/v1/chat/completions", payload, headers)
@@ -377,6 +374,7 @@ def process_llm_response(result):
     result = json.loads(json_text)
 
     print(result)
+    return result
 
 # python3 main.py
 if __name__ == "__main__":

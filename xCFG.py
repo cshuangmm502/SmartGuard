@@ -106,10 +106,10 @@ def build_global_cfg(artifacts_path, df_blockEdge, df_functionCall, df_functionR
         inform_edges = [("relayer", str(blk)) for blk in set(informing_blocks)]
         G.add_edges_from(inform_edges)
 
-    return G
+    return G, emitting_events, informing_events
 
 
-def build_fcg(artifacts_path, df_functionCall, df_block_in_func, events):
+def build_fcg(artifacts_path, df_functionCall, df_block_in_func, emitting_events, informing_events):
     # print("🚀 正在加载 Gigahorse 提取的 TAC 数据库...")
     functioncalls = df_functionCall
     block_func_relations = df_block_in_func
@@ -130,14 +130,15 @@ def build_fcg(artifacts_path, df_functionCall, df_block_in_func, events):
         if caller_func != "0" and callee_func != "0" and caller_func != callee_func:
             Call_G.add_edge(caller_func, callee_func)
 
-    emitting_events, informing_events = analyze_events(events, artifacts_path)
+    # emitting_events, informing_events = analyze_events(events, artifacts_path)
+
     # 处理 Deposit (Emitting) -> Relayer
     emitting_funcs = convert_events_to_func(block_func_relations, emitting_events)
-    print(emitting_funcs)
+    # print(emitting_funcs)
 
     # 处理 Withdrawal (Informing) -> Client
     informing_funcs = convert_events_to_func(block_func_relations, informing_events)
-    print(informing_funcs)
+    # print(informing_funcs)
 
     return Call_G, emitting_funcs, informing_funcs
 

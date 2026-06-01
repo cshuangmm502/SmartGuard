@@ -1,33 +1,38 @@
+import json
 from pathlib import Path
 import pandas as pd
 import networkx as nx
 from SC_extract import (extract_used_storage_in_controlflow, extract_used_caller_in_controlFlow,
                         extract_used_callData_in_controlFlow, extract_used_callPubArgs_in_controlFlow,
                         extract_used_callPriArgs_in_controlFlow)
-from tac_analyze_scripts.GeminiRequest import call_llm_api_supportness_check
+from tac_analyze_scripts.GeminiRequest import call_llm_api_supportness_check, process_llm_response, \
+    call_llm_api_repeat_check
 
 
-def ACV_analysis(df_functionCall, df_block_in_func, emitting_functions, informing_functions, func_call_graph,
+def ACV_analysis(artifacts_path, df_functionCall, df_block_in_func, emitting_functions, informing_functions, func_call_graph,
                  global_control_flow_graph, df_functionReturn,
                  AUTH_BLOCKS, POTENTIAl_AUTH_BLOCKS, checkBlock_des_dict):
-    # print(f"\n=======================================================")
-    # print(f"🎯 开始分析源链关键函数 ")
-    # print(f"=======================================================")
-    # detect_incomplete_AC(df_functionCall, df_block_in_func, emitting_functions, func_call_graph,
-    #              global_control_flow_graph, df_functionReturn,
-    #              AUTH_BLOCKS, POTENTIAl_AUTH_BLOCKS, checkBlock_des_dict)
+    # 逻辑标志，源链函数为0，目标链为1
+    func_tag = 0
+    print(f"\n=======================================================")
+    print(f"🎯 开始分析源链关键函数 ")
+    print(f"=======================================================")
+    detect_incomplete_AC(artifacts_path, df_functionCall, df_block_in_func, emitting_functions, func_call_graph,
+                 global_control_flow_graph, df_functionReturn,
+                 AUTH_BLOCKS, POTENTIAl_AUTH_BLOCKS, checkBlock_des_dict, func_tag)
 
     print(f"\n=======================================================")
     print(f"🎯 开始分析目标链关键函数 ")
     print(f"=======================================================")
-    detect_incomplete_AC(df_functionCall, df_block_in_func, informing_functions, func_call_graph,
+    func_tag = 1
+    detect_incomplete_AC(artifacts_path, df_functionCall, df_block_in_func, informing_functions, func_call_graph,
                          global_control_flow_graph, df_functionReturn,
-                         AUTH_BLOCKS, POTENTIAl_AUTH_BLOCKS, checkBlock_des_dict)
+                         AUTH_BLOCKS, POTENTIAl_AUTH_BLOCKS, checkBlock_des_dict, func_tag)
 
 
-def detect_incomplete_AC(df_functionCall, df_block_in_func, target_funcs_info, func_call_graph,
+def detect_incomplete_AC(artifacts_path, df_functionCall, df_block_in_func, target_funcs_info, func_call_graph,
                          global_control_flow_graph,
-                         df_functionReturn, AUTH_BLOCKS, POTENTIAl_AUTH_BLOCKS, checkBlock_des_dict):
+                         df_functionReturn, AUTH_BLOCKS, POTENTIAl_AUTH_BLOCKS, checkBlock_des_dict, func_tag):
     # ==========================================
     # 1. 预加载与数据清洗
     # ==========================================
@@ -45,7 +50,7 @@ def detect_incomplete_AC(df_functionCall, df_block_in_func, target_funcs_info, f
 
     source_func = "0x0"
     analysis_report = []
-
+    LOG_FILE = artifacts_path / "output_debug" / "semantic_analysis.txt"
     # ==========================================
     # 2. 遍历所有目标敏感操作
     # ==========================================
@@ -63,6 +68,7 @@ def detect_incomplete_AC(df_functionCall, df_block_in_func, target_funcs_info, f
             continue
 
         paths = list(nx.all_simple_paths(func_call_graph, source_func, target_func, cutoff=6))
+
 
         for func_path in paths:
             print(f"\n🚀 正在检测调用路径: {' -> '.join(func_path) } -> {sensitive_block}")
@@ -202,15 +208,43 @@ def detect_incomplete_AC(df_functionCall, df_block_in_func, target_funcs_info, f
             else:
                 print(f"🔴 结论：警告！到达 {event_name} 的路径存在绕过风险 (全程无有效鉴权)")
 
-            # 整条执行路径的守卫块及守卫信息
+
+            # 记录整条执行路径的守卫块及守卫信息
             print(f"func_path: {func_path} suffered check blocks: {path_check_blocks}")
             checks_block_info = []
             for block in path_check_blocks:
                 checks_block_info.append(checkBlock_des_dict[block])
 
-            supportness_check_result = call_llm_api_supportness_check(path_check_blocks, checks_block_info)
 
-            # is_repetitiveness = call_llm_api_repetitiveness_check(path_check_blocks, checks_block_info)
+            # 调用LLM接口执行supportness检查
+            response = call_llm_api_supportness_check(path_check_blocks, checks_block_info)
+            # 提取结果
+            support_check_result = process_llm_response(response)
+            # print(support_check_result)
+
+            # 写入 semantic_analysis.txt
+            with open(LOG_FILE, "a", encoding="utf-8") as f:
+                f.write("=" * 100 + "\n")
+                f.write(f"func_path: {func_path}\n")
+                f.write(f"suffered check blocks: {path_check_blocks}\n\n")
+
+                f.write("checks_block_info:\n")
+                for block in path_check_blocks:
+                    f.write(f"check block {str(block)} {str(checkBlock_des_dict[block])} \n")
+
+                f.write("\nsupport_check_analysis_result:\n")
+                f.write(json.dumps(support_check_result, ensure_ascii=False, indent=2))
+                f.write("\n\n")
+
+            # repeat分析只作用于目标链逻辑
+            if func_tag == 1:
+                response = call_llm_api_repeat_check(path_check_blocks, checks_block_info)
+                repeat_check_result = process_llm_response(response)
+                # print(repeat_check_result)
+                with open(LOG_FILE, "a", encoding="utf-8") as f:
+                    f.write("repeat_check_analysis_result:\n")
+                    f.write(json.dumps(repeat_check_result, ensure_ascii=False, indent=2))
+                    f.write("\n\n")
 
             analysis_report.append({
                 "target_func": target_func,
@@ -222,8 +256,9 @@ def detect_incomplete_AC(df_functionCall, df_block_in_func, target_funcs_info, f
                 "hop_details": hop_details  # 【新增】完整的每段鉴权汇报数据
             })
 
-
-    print(f"\n🏁 扫描完成。共分析了 {len(analysis_report)} 条路径。")
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        f.write("=" * 100 + "\n")
+        f.write(f"🏁 扫描完成。共分析了 {len(analysis_report)} 条路径。\n")
     # print(analysis_report)
     return analysis_report
 

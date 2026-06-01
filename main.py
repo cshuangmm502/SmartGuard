@@ -3,6 +3,8 @@
 
 from pathlib import Path
 import pandas as pd
+
+from ISV_analysis import ISV_analysis
 from SC_extract import parsefromdecompiledcode
 from ACV_analysis import ACV_analysis
 from tac_analysis import (extract_all_events, extract_all_storage, extract_all_publicFunc_call,
@@ -66,10 +68,14 @@ def vulnerability_analysis(artifacts_path, contract_name):
     #
     events = extract_all_events(df_opcodes, df_var_values, df_uses, df_sign_eventName, df_stmts_in_block)
     # print(events)
-    events.to_excel(out_dir / "events.xlsx", index=False)
-    global_cfg = build_global_cfg(artifacts_path, df_blockEdge, df_functionCall, df_functionReturn, df_publicFunction, events)
+    # events.to_excel(out_dir / "events.xlsx", index=False)
+
+    global_cfg, emitting_events, informing_events = build_global_cfg(artifacts_path, df_blockEdge, df_functionCall,
+                                                                     df_functionReturn, df_publicFunction, events)
     # output_Graph_to_file(global_cfg, 'global_cfg', artifacts_path)
-    fcg, emitting_functions, informing_functions = build_fcg(artifacts_path, df_functionCall, df_block_in_func, events)
+    # emitting_events.to_excel(out_dir / "emitting_events.xlsx", index=False)
+    fcg, emitting_functions, informing_functions = build_fcg(artifacts_path, df_functionCall, df_block_in_func,
+                                                             emitting_events, informing_events)
     # #谓词（CALL、SLOAD、CALLVALUE等）授权块（宽松的检查块）
     ddg = build_data_dependency_graph(df_defines, df_uses)
     sload_semantics_dict = storage.set_index('stmtID')['semantic'].to_dict()
@@ -97,10 +103,11 @@ def vulnerability_analysis(artifacts_path, contract_name):
     POTENTIAL_AUTH_BLOCKS = list(df_functionCall.iloc[:, 0])
     # print(POTENTIAL_AUTH_BLOCKS)
 
-    ACV_analysis(df_functionCall, df_block_in_func, emitting_functions, informing_functions, fcg, global_cfg,
-                df_functionReturn, AUTH_BLOCKS, POTENTIAL_AUTH_BLOCKS, checkBlock_des_dict)
+    # ACV_analysis(artifacts_path, df_functionCall, df_block_in_func, emitting_functions, informing_functions, fcg, global_cfg,
+    #             df_functionReturn, AUTH_BLOCKS, POTENTIAL_AUTH_BLOCKS, checkBlock_des_dict)
 
-
+    # 不一致的语义检测
+    ISV_analysis(artifacts_path, emitting_functions, df_opcodes, df_uses)
 # def function extract_Auth_Blocks()
 
 # python3 main.py
