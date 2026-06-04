@@ -1,6 +1,8 @@
 from pathlib import Path
 import pandas as pd
+import logging
 
+logger = logging.getLogger(__name__)
 
 CUSTOM_EVENT_SIGNATURES = {
     "0x5d0634fe981be85c22e2942a880821b70095d84e152c3ea3c17a4e4250d9d61":
@@ -20,6 +22,7 @@ def extract_all_storage(df_opcodes, df_defines, df_uses, df_var_values, df_mappi
     :param storage_semantic: 基于反编译代码提取的状态语义表的dataframe
     :return: 输入合约使用到的存储状态信息
     """
+    logger.info("开始分析合约状态存储")
     opcodes = df_opcodes
     defines = df_defines
     uses = df_uses
@@ -209,10 +212,12 @@ def extract_all_storage(df_opcodes, df_defines, df_uses, df_var_values, df_mappi
     storage = storage.reset_index()
     storage = storage[original_cols]
     # print("\n🎯 分析完成！")
+    logger.info("🎯 合约存储分析完成！")
     return storage
 
 
 def extract_all_publicFunc_call(df_opcodes, df_defines, df_uses, df_var_values, df_stmts_in_block):
+    logger.info("开始分析公共函数调用")
     opcodes = df_opcodes
     defines = df_defines
     uses = df_uses
@@ -316,10 +321,12 @@ def extract_all_publicFunc_call(df_opcodes, df_defines, df_uses, df_var_values, 
     Calldata_Info = Calldata_Info[original_calldata_cols]
 
     # print("\n🎯 Caller & Calldata 提取完成！")
+    logger.info("🎯 Caller & Calldata 分析完成！")
     return Caller_Info, Calldata_Info
 
 
 def extract_all_publicFunc_args(df_publicArgs, df_uses, df_stmts_in_block):
+    logger.info("开始分析Public Function Args")
     # print("🚀 正在加载 Gigahorse 提取的 TAC 数据库...")
     args = df_publicArgs
     uses = df_uses
@@ -353,46 +360,62 @@ def extract_all_publicFunc_args(df_publicArgs, df_uses, df_stmts_in_block):
     pubFunc_args = pubFunc_args[original_pubfuncargs_cols]
 
     # print("\n🎯 Public Function Args 提取完成！")
+    logger.info("🎯 Public Function Args 分析完成！")
     return pubFunc_args
 
 
-def extract_all_privateFunc_args(df_formalArgs, df_uses, df_stmts_in_block):
-    args = df_formalArgs
-    uses = df_uses
+def extract_all_privateFunc_args(df_formalArgs, df_uses, df_stmts_in_block, df_block_in_func):
+    logger.info("开始分析Private Function Args")
+    # 1. 过滤：获取在 args 中存在的 var 行
+    # 假设 df_uses 的第0列是 stmtID，第1列是 var
+    col_stmt = df_uses.columns[0]
+    col_var = df_uses.columns[1]
 
-    # print("\n🔍 正在提取私有函数与参数使用关系...\n")
+    valid_vars = df_formalArgs.iloc[:, 1]
+    privFunc_args = df_uses[df_uses[col_var].isin(valid_vars)].copy()
 
-    privFunc_args_row = uses[uses.iloc[:, 1].isin(args.iloc[:, 1])]
-    privFunc_args = pd.DataFrame(columns=['stmtID', 'var', 'blockID'])
+    # 统一重命名列名，方便后续操作
+    privFunc_args = privFunc_args.rename(columns={col_stmt: 'stmtID', col_var: 'var'})
 
-    for _, row in privFunc_args_row.iterrows():
-        stmt = row['stmtID']
-        var = row['var']
-        line = pd.Series({'stmtID': stmt,
-                          'var': var,
-                          'blockID': '0'
-                          })
-        privFunc_args = privFunc_args.append(line, ignore_index=True)
+    # 2. 关联 blockID：将 stmtID 与 blockID 进行左连接
+    privFunc_args = pd.merge(
+        privFunc_args,
+        df_stmts_in_block[['stmtID', 'blockID']],
+        on='stmtID',
+        how='left'
+    )
 
-    # print(privFunc_args)
+    # 将缺失的 blockID 填充为 '0'
+    privFunc_args['blockID'] = privFunc_args['blockID'].fillna('0')
 
-    original_formalargs_cols = privFunc_args.columns.tolist()
+    # 3. 关联 function：将 blockID 与 func_id 进行左连接
+    # 为了安全，统一转为字符串进行匹配
+    privFunc_args['blockID'] = privFunc_args['blockID'].astype(str)
+    df_block_in_func['block'] = df_block_in_func['block'].astype(str)
 
-    stmt_block = df_stmts_in_block
-    stmt_block = stmt_block.set_index(['stmtID'])
-    privFunc_args = privFunc_args.set_index(['stmtID'])
+    # 合并 function 数据
+    privFunc_args = pd.merge(
+        privFunc_args,
+        df_block_in_func[['block', 'func_id']],
+        left_on='blockID',
+        right_on='block',
+        how='left'
+    )
 
-    privFunc_args['blockID'].update(stmt_block['blockID'])
+    # 将 func_id 重命名为 function，并处理缺失值为 'null'
+    privFunc_args['function'] = privFunc_args['func_id'].fillna('null')
 
-    privFunc_args = privFunc_args.reset_index()
+    # 4. 整理最终输出的列
+    final_cols = ['stmtID', 'var', 'blockID', 'function']
+    privFunc_args = privFunc_args[final_cols]
 
-    privFunc_args = privFunc_args[original_formalargs_cols]
+    logger.info("🎯 Private Function Args 分析完成！")
 
-    # print("\n🎯 FormalArgs 提取完成！")
     return privFunc_args
 
 
 def extract_all_events(df_opcodes, df_var_values, df_uses, df_sign_eventName, df_stmts_in_block):
+    logger.info("开始分析合约event")
     # print("🚀 正在加载 Gigahorse 提取的 TAC 数据库...")
     opcodes = df_opcodes
     var_value = df_var_values
@@ -414,6 +437,7 @@ def extract_all_events(df_opcodes, df_var_values, df_uses, df_sign_eventName, df
     events = topic0_with_name.merge(stmt_block, on='stmtID', how='left')
     events = events[['stmtID', 'signature', 'event_name', 'blockID']]
     events = fill_missing_event_names(events, CUSTOM_EVENT_SIGNATURES)
+    logger.info("🎯 合约 event 分析完成！")
     return events
 
 def normalize_event_signature(sig):

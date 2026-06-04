@@ -4,7 +4,7 @@ from pathlib import Path
 import networkx as nx
 from typing import Tuple
 import matplotlib.pyplot as plt
-
+import logging
 from event_analysis import analyze_events, convert_events_to_func
 from tac_analysis import extract_all_events
 from tac_analyze_scripts.help_function import output_Graph_to_file
@@ -14,8 +14,10 @@ OUT_DIR = PROJECT_ROOT / "contracts/ChainSwap/TokenMapped/out"
 CONTRACT_NAME = "TokenMapped"
 CONTRACT_ARTIFACTS_PATH = OUT_DIR.parent
 
+logger = logging.getLogger(__name__)
 
 def build_global_cfg(artifacts_path, df_blockEdge, df_functionCall, df_functionReturn, df_publicFuncs, events):
+    logger.info("开始构建全局控制流图")
     emitting_events, informing_events = analyze_events(events, artifacts_path)
     informing_blocks = informing_events['blockID'].tolist()
     emitting_blocks = emitting_events['blockID'].tolist()
@@ -106,10 +108,12 @@ def build_global_cfg(artifacts_path, df_blockEdge, df_functionCall, df_functionR
         inform_edges = [("relayer", str(blk)) for blk in set(informing_blocks)]
         G.add_edges_from(inform_edges)
 
+    logger.info("🎯 合约全局控制流图构建完成！")
     return G, emitting_events, informing_events
 
 
 def build_fcg(artifacts_path, df_functionCall, df_block_in_func, emitting_events, informing_events):
+    logger.info("针对跨链event，开始构建函数级调用图")
     # print("🚀 正在加载 Gigahorse 提取的 TAC 数据库...")
     functioncalls = df_functionCall
     block_func_relations = df_block_in_func
@@ -140,6 +144,8 @@ def build_fcg(artifacts_path, df_functionCall, df_block_in_func, emitting_events
     informing_funcs = convert_events_to_func(block_func_relations, informing_events)
     # print(informing_funcs)
 
+    logger.info("🎯 函数级调用图构建完成！")
+
     return Call_G, emitting_funcs, informing_funcs
 
 
@@ -147,6 +153,7 @@ def build_data_dependency_graph(df_defines, df_uses):
     """
         通过 Def 和 Use 构建语句级别的数据依赖图 (DDG)
         """
+    logger.info("开始构建数据流依赖图")
     df_def = df_defines
     df_use = df_uses
 
@@ -159,6 +166,8 @@ def build_data_dependency_graph(df_defines, df_uses):
     DDG = nx.DiGraph()
     edges = list(zip(df_flow['stmtID_def'], df_flow['stmtID_use']))
     DDG.add_edges_from(edges)
+
+    logger.info("🎯 数据流依赖图构建完成！")
 
     return DDG
 
@@ -590,6 +599,7 @@ def extract_arg_state_rendezvous(DDG, df_def, df_pub_args, df_opcode, df_block):
     """
     终极语义提取：寻找 SLOAD 和 Args(参数) 数据流交汇的比较指令，并确认其流入 JUMPI。
     """
+    logger.info("开始基于 SLOAD 和 Args(参数) 数据流交汇的比较指令进行守护区块提取")
     # 1. 基础映射准备
     df_opcode['opcode'] = df_opcode['opcode'].astype(str).str.strip().str.upper()
     opcode_dict = df_opcode.set_index('stmtID')['opcode'].to_dict()
@@ -617,10 +627,12 @@ def extract_arg_state_rendezvous(DDG, df_def, df_pub_args, df_opcode, df_block):
     jumpi_stmts = set(df_opcode[df_opcode['opcode'] == 'JUMPI']['stmtID'])
     valid_jumpis = set([s for s in jumpi_stmts if s in DDG])
 
-    print(f"[*] 开始进行数据流交汇分析 (Rendezvous Analysis)...")
-    print(f"    - SLOAD 起点: {len(valid_sloads)} 个")
-    print(f"    - Args  起点: {len(valid_args)} 个\n")
-
+    # print(f"[*] 开始进行数据流交汇分析 (Rendezvous Analysis)...")
+    # print(f"    - SLOAD 起点: {len(valid_sloads)} 个")
+    # print(f"    - Args  起点: {len(valid_args)} 个\n")
+    logger.info("[*] 开始进行数据流交汇分析 (Rendezvous Analysis)...")
+    logger.info("    - SLOAD 起点: %s 个", len(valid_sloads))
+    logger.info("    - Args  起点: %s 个", len(valid_args))
     # 5. 分别计算 SLOAD 和 Args 能到达的比较指令
     sload_to_compares = {}  # 比较指令 -> 哪些 SLOAD 到达了它
     for sload in valid_sloads:
@@ -665,23 +677,31 @@ def extract_arg_state_rendezvous(DDG, df_def, df_pub_args, df_opcode, df_block):
         sload_descriptions = [f"[SLOAD]({s})" for s in sloads_involved]
         jumpi_descriptions = [f"[JUMPI]({j})" for j in hit_jumpis]
 
-        # 打印绝美的高级语义
-        print(f"🎯 完美安全校验 (参数 vs 状态) #{found_count}:")
-        print(f"  📌 业务逻辑: 正在将 {', '.join(arg_descriptions)} ")
-        print(f"               与 {', '.join(sload_descriptions)} 进行比较！")
-        print(f"  ⚔️ 交汇指令: [{comp_op}]({comp_stmt})")
-        print(f"  🛡️ 守护区块: 跳转判断 {', '.join(jumpi_descriptions)}")
-        print("-" * 70)
+        # 打印语义
+        # print(f"🎯 完美安全校验 (参数 vs 状态) #{found_count}:")
+        # print(f"  📌 业务逻辑: 正在将 {', '.join(arg_descriptions)} ")
+        # print(f"               与 {', '.join(sload_descriptions)} 进行比较！")
+        # print(f"  ⚔️ 交汇指令: [{comp_op}]({comp_stmt})")
+        # print(f"  🛡️ 守护区块: 跳转判断 {', '.join(jumpi_descriptions)}")
+        # print("-" * 70)
+        logger.debug("提取到的守护区块")
+        logger.debug("🎯 安全校验 (参数 vs 状态) #%s:", found_count)
+        logger.debug("📌 业务逻辑: 正在将: %s 与 %s 进行比较！", ', '.join(arg_descriptions), ', '.join(sload_descriptions))
+        logger.debug("⚔️ 交汇指令: [%s](%s)", comp_op, comp_stmt)
+        logger.debug("🛡️ 守护区块: 跳转判断 %s", ', '.join(jumpi_descriptions))
+        logger.debug("-" * 70)
 
-    print(f"\n[+] 交汇分析完毕！共发现 {found_count} 个极高置信度的业务逻辑校验点。")
+    # print(f"\n[+] 交汇分析完毕！共发现 {found_count} 个极高置信度的业务逻辑校验点。")
+    logger.info("[+] SLOAD 和 Args(参数) 数据流交汇分析完毕！共发现 %s 个极高置信度的业务逻辑校验点。", found_count)
     return true_auth_blocks
 
 
 def extract_caller_state_rendezvous(DDG, df_opcode, df_block):
     """
     经典权限提取：寻找 SLOAD 和 CALLER 数据流交汇的比较指令，并确认其流入 JUMPI。
-    (完美捕获 msg.sender == owner 模式)
+    (捕获 msg.sender == owner 模式)
     """
+    logger.info("开始基于 SLOAD 和 CALLER 数据流交汇的比较指令进行守护区块提取")
     # 1. 基础映射准备
     # 确保 opcode 转为大写并去除了空白字符
     df_opcode['opcode'] = df_opcode['opcode'].astype(str).str.strip().str.upper()
@@ -703,9 +723,12 @@ def extract_caller_state_rendezvous(DDG, df_opcode, df_block):
     jumpi_stmts = set(df_opcode[df_opcode['opcode'] == 'JUMPI']['stmtID'])
     valid_jumpis = set([s for s in jumpi_stmts if s in DDG])
 
-    print(f"[*] 开始经典权限交汇分析 (msg.sender vs SLOAD) ...")
-    print(f"    - SLOAD  起点: {len(valid_sloads)} 个")
-    print(f"    - CALLER 起点: {len(valid_callers)} 个\n")
+    # print(f"[*] 开始经典权限交汇分析 (msg.sender vs SLOAD) ...")
+    # print(f"    - SLOAD  起点: {len(valid_sloads)} 个")
+    # print(f"    - CALLER 起点: {len(valid_callers)} 个\n")
+    logger.info("[*] 开始经典权限交汇分析 (msg.sender vs SLOAD) ...")
+    logger.info("    - SLOAD  起点: %s 个", len(valid_sloads))
+    logger.info("    - CALLER 起点: %s 个", len(valid_callers))
 
     # 5. 分别计算 SLOAD 和 CALLER 能到达的比较指令
     sload_to_compares = {}  # 比较指令 -> 哪些 SLOAD 到达了它
@@ -752,17 +775,27 @@ def extract_caller_state_rendezvous(DDG, df_opcode, df_block):
         jumpi_descriptions = [f"[JUMPI]({j})" for j in hit_jumpis]
 
         # 打印直观的安全语义
-        print(f"👑 身份鉴权点 (CALLER vs 状态) #{found_count}:")
-        print(f"  📌 身份提取: {', '.join(caller_descriptions)}")
-        print(f"  📌 状态读取: {', '.join(sload_descriptions)}")
-        print(f"  ⚔️ 交汇比对: [{comp_op}]({comp_stmt})")
-        print(f"  🛡️ 守护区块: 跳转判断 {', '.join(jumpi_descriptions)}")
-        print("-" * 70)
+        # print(f"👑 身份鉴权点 (CALLER vs 状态) #{found_count}:")
+        # print(f"  📌 身份提取: {', '.join(caller_descriptions)}")
+        # print(f"  📌 状态读取: {', '.join(sload_descriptions)}")
+        # print(f"  ⚔️ 交汇比对: [{comp_op}]({comp_stmt})")
+        # print(f"  🛡️ 守护区块: 跳转判断 {', '.join(jumpi_descriptions)}")
+        # print("-" * 70)
 
-    print(f"\n[+] 身份鉴权提取完毕！共发现 {found_count} 个基于调用者的严格身份校验点。")
+        logger.debug("提取到的守护区块")
+        logger.debug("👑 身份鉴权点 (CALLER vs 状态) #%s:", found_count)
+        logger.debug("  📌 身份提取: %s", ', '.join(caller_descriptions))
+        logger.debug("  📌 状态读取: %s", ', '.join(sload_descriptions))
+        logger.debug("⚔️ 交汇指令: [%s](%s)", comp_op, comp_stmt)
+        logger.debug("🛡️ 守护区块: 跳转判断 %s", ', '.join(jumpi_descriptions))
+        logger.debug("-" * 70)
+
+    # print(f"\n[+] 身份鉴权提取完毕！共发现 {found_count} 个基于调用者的严格身份校验点。")
+    logger.info("[+] 身份鉴权提取完毕！共发现 %s 个基于调用者的严格身份校验点。", found_count)
 
     # === 补充：Mapping (白名单) 模式检查 ===
-    print("\n[*] 正在补充检查 Mapping 模式 (如 whitelist[msg.sender]) ...")
+    # print("\n[*] 正在补充检查 Mapping 模式 (如 whitelist[msg.sender]) ...")
+    logger.info("[*] 正在补充检查 Mapping 模式 (如 whitelist[msg.sender]) ...")
 
     # CALLER 到 JUMPI 的所有路线
     caller_to_jumpis = set()
@@ -786,17 +819,22 @@ def extract_caller_state_rendezvous(DDG, df_opcode, df_block):
     for j in pure_mapping_jumpis:
         if j in df_block_dict:
             true_auth_blocks.add(df_block_dict[j])
-        print(f"📖 发现映射鉴权点 (Mapping Check) 流向: [JUMPI]({j})")
+        # print(f"📖 发现映射鉴权点 (Mapping Check) 流向: [JUMPI]({j})")
+        logger.info("📖 发现映射鉴权点 (Mapping Check) 流向: [JUMPI](%s)", j)
 
-    print(f"[+] 补充发现 {len(pure_mapping_jumpis)} 个 Mapping 鉴权点。")
+    # print(f"[+] 补充发现 {len(pure_mapping_jumpis)} 个 Mapping 鉴权点。")
+    logger.info("[+] 补充发现 %s 个 Mapping 鉴权点。", len(pure_mapping_jumpis))
+
+    logger.info("[+] SLOAD 和 CALLER 数据流交汇分析完毕！")
     return true_auth_blocks
 
 
 def extract_value_state_rendezvous(DDG, df_opcode, df_block):
     """
-    终极资金约束提取：寻找 (SLOAD / CALL / MLOAD) 与 msg.value 交汇的比较指令。
-    完美捕获内部状态、外部配置拉取、内存参数的资金校验！
+    资金约束提取：寻找 (SLOAD / CALL / MLOAD) 与 msg.value 交汇的比较指令。
+    捕获内部状态、外部配置拉取、内存参数的资金校验
     """
+    logger.info("开始基于 (SLOAD / CALL / MLOAD) 与 msg.value 数据流交汇的比较指令进行守护区块提取")
     df_opcode['opcode'] = df_opcode['opcode'].astype(str).str.strip().str.upper()
     opcode_dict = df_opcode.set_index('stmtID')['opcode'].to_dict()
     df_block_dict = df_block.set_index('stmtID')['blockID'].to_dict()
@@ -816,7 +854,8 @@ def extract_value_state_rendezvous(DDG, df_opcode, df_block):
     jumpi_stmts = set(df_opcode[df_opcode['opcode'] == 'JUMPI']['stmtID'])
     valid_jumpis = set([s for s in jumpi_stmts if s in DDG])
 
-    print(f"[*] 开始终极资金交汇分析 (跨越内存断层) ...")
+    # print(f"[*] 开始资金交汇分析 (跨越内存断层) ...")
+    logger.info("开始资金交汇分析 (跨越内存断层) ..")
 
     # 寻路
     state_to_compares = {}
@@ -866,14 +905,25 @@ def extract_value_state_rendezvous(DDG, df_opcode, df_block):
 
         jumpi_descriptions = [f"[JUMPI]({j})" for j in hit_jumpis]
 
-        print(f"💎 终极业务约束点 #{found_count}:")
-        print(f"  📌 传入资金: {', '.join(value_descriptions)}")
-        print(f"  📌 对照标准: {', '.join(state_descriptions)}")
-        print(f"  ⚖️ 交汇比对: [{comp_op}]({comp_stmt})")
-        print(f"  🛡️ 守护区块: 跳转判断 {', '.join(jumpi_descriptions)}")
-        print("-" * 70)
+        # print(f"💎 业务约束点 #{found_count}:")
+        # print(f"  📌 传入资金: {', '.join(value_descriptions)}")
+        # print(f"  📌 对照标准: {', '.join(state_descriptions)}")
+        # print(f"  ⚖️ 交汇比对: [{comp_op}]({comp_stmt})")
+        # print(f"  🛡️ 守护区块: 跳转判断 {', '.join(jumpi_descriptions)}")
+        # print("-" * 70)
 
-    print(f"\n[+] 提取完毕！共发现 {found_count} 个约束点。")
+        logger.debug("提取到的守护区块")
+        logger.debug("💎 业务约束点 #%s:", found_count)
+        logger.debug("  📌 传入资金: %s", ', '.join(value_descriptions))
+        logger.debug("  📌 对照标准: %s", ', '.join(state_descriptions))
+        logger.debug("⚔️ 交汇比对: [%s](%s)", comp_op, comp_stmt)
+        logger.debug("🛡️ 守护区块: 跳转判断 %s", ', '.join(jumpi_descriptions))
+        logger.debug("-" * 70)
+
+
+    # print(f"\n[+] 提取完毕！共发现 {found_count} 个约束点。")
+
+    logger.info("[+] (SLOAD / CALL / MLOAD) 与 msg.value 数据流交汇分析完毕！共发现 %s 个约束点。", found_count)
     return true_auth_blocks
 
 # 宽松的检查块提取方法
@@ -881,6 +931,7 @@ def extract_predicate_slices(DDG, df_opcode, df_block, sload_semantics_dict):
     """
     基于向后切片 (Backward Slicing) 提取所有依赖关键变量的条件谓词区域。
     """
+    logger.info("开始基于JUMPI语句进行守护区块提取")
     df_opcode['opcode'] = df_opcode['opcode'].astype(str).str.strip().str.upper()
     opcode_dict = df_opcode.set_index('stmtID')['opcode'].to_dict()
     df_block_dict = df_block.set_index('stmtID')['blockID'].to_dict()
@@ -888,7 +939,7 @@ def extract_predicate_slices(DDG, df_opcode, df_block, sload_semantics_dict):
     # diagnose_jumpi(DDG, opcode_dict, '0xec1')
     # 1. 定义我们关心的所有关键数据源
     CRITICAL_SOURCES = {'CALLER', 'ORIGIN', 'CALLVALUE', 'SLOAD', 'CALLDATALOAD', 'CALLDATACOPY', 'CALL', 'STATICCALL'}
-
+    logger.info("关键数据源：CALLER, ORIGIN, CALLVALUE, SLOAD, CALLDATALOAD, CALLDATACOPY, CALL, STATICCALL")
     source_stmts = set(df_opcode[df_opcode['opcode'].isin(CRITICAL_SOURCES)]['stmtID'])
     valid_sources = [s for s in source_stmts if s in DDG]
 
@@ -901,9 +952,10 @@ def extract_predicate_slices(DDG, df_opcode, df_block, sload_semantics_dict):
         hit_jumpis = nx.descendants(DDG, source).intersection(valid_jumpis)
         affected_jumpis.update(hit_jumpis)
 
-    print(f"[*] 发现 {len(affected_jumpis)} 个受关键数据影响的条件跳转 (JUMPI)。")
-    print(f"[*] 正在进行向后切片 (Backward Slicing) 提取谓词区域...\n")
-
+    logger.info("[*] 发现 %s 个受关键数据影响的条件跳转 (JUMPI)。", len(affected_jumpis))
+    # print(f"[*] 发现 {len(affected_jumpis)} 个受关键数据影响的条件跳转 (JUMPI)。")
+    # print(f"[*] 正在进行向后切片 (Backward Slicing) 提取谓词区域...\n")
+    logger.info("开始进行向后切片 (Backward Slicing) 提取谓词区域...")
     extracted_predicates = []
 
     # 3. 后向切片：提取决策该 JUMPI 的所有指令
@@ -944,18 +996,26 @@ def extract_predicate_slices(DDG, df_opcode, df_block, sload_semantics_dict):
 
         # 打印直观的谓词构成
         source_str = ", ".join(set(involved_opcodes))
-        print(f"🎯 提取谓词区域 (守护区块: {block_id}):")
-        print(f"  📌 业务约束逻辑: {semantic_summary}")
-        print(f"  📌 驱动此判断的数据源: {source_str}")
-        print(f"  📌 谓词复杂度: {len(slice_nodes)} 条指令")
-        print("-" * 60)
+        # print(f"🎯 提取谓词区域 (守护区块: {block_id}):")
+        # print(f"  📌 业务约束逻辑: {semantic_summary}")
+        # print(f"  📌 驱动此判断的数据源: {source_str}")
+        # print(f"  📌 谓词复杂度: {len(slice_nodes)} 条指令")
+        # print("-" * 60)
         des = f"业务约束逻辑: {semantic_summary},"+f"驱动此判断的数据源: {source_str}"
         checkBlock_des_dict.setdefault(block_id, des)
+
+        logger.debug("提取到的守护区块")
+        logger.debug("🎯 提取谓词区域 (守护区块: %s):", block_id)
+        logger.debug("📌 业务约束逻辑: %s", semantic_summary)
+        logger.debug("📌 驱动此判断的数据源: %s", source_str)
+        logger.debug("📌 谓词复杂度: %s", len(slice_nodes))
+        logger.debug("-" * 60)
 
     # 提取所有合法的 Block ID
     auth_blocks = set(p['block_id'] for p in extracted_predicates if p['block_id'])
 
-    print(f"\n[+] 切片提取完毕！共输出 {len(auth_blocks)} 个宽松但有效的守护区块 (AUTH_BLOCKS)。")
+    # print(f"\n[+] 切片提取完毕！共输出 {len(auth_blocks)} 个宽松但有效的守护区块 (AUTH_BLOCKS)。")
+    logger.info("[+] 切片提取完毕！共输出 %s 个宽松但有效的守护区块 (AUTH_BLOCKS)。", len(auth_blocks))
     return auth_blocks, checkBlock_des_dict
 
 def diagnose_jumpi(DDG, opcode_dict, target_jumpi_stmt):
@@ -1075,6 +1135,7 @@ def analyze_slice_semantics(predicate_subgraph, jumpi_stmt, DDG, opcode_dict):
         else:
             return "[Unknown Condition]"
 
+
 def analyze_slice_semantics_with_storage(predicate_subgraph, jumpi_stmt, DDG, opcode_dict, sload_semantics_dict):
     """
     带存储语义恢复的高级解析器。
@@ -1169,6 +1230,7 @@ def analyze_slice_semantics_with_storage(predicate_subgraph, jumpi_stmt, DDG, op
             return f"[Boolean Check on: {', '.join(set(sources))}]"
         else:
             return "[Unknown Condition]"
+
 
 def analyze_slice_semantics_with_priority(predicate_subgraph, jumpi_stmt, DDG, opcode_dict, sload_semantics_dict):
     """
@@ -1305,6 +1367,7 @@ def analyze_slice_semantics_with_priority(predicate_subgraph, jumpi_stmt, DDG, o
 
         return f"[{best_semantic}]"
 
+
 def analyze_slice_semantics_accurate(predicate_subgraph, jumpi_stmt, DDG, opcode_dict, sload_semantics_dict):
     """
     基于“语义边界阻断”的终极解析器。
@@ -1430,6 +1493,39 @@ def analyze_slice_semantics_accurate(predicate_subgraph, jumpi_stmt, DDG, opcode
                 return f"[Boolean Check on: {sources_str}]"
         else:
             return "[Unknown Boolean Check]"
+
+
+def build_AC_check_blocks(df_defines, df_uses, df_opcodes, df_stmts_in_block, storage,
+                          df_publicArgs, df_formalArgs, df_functionCall):
+    logger.info("开始构建授权检查块")
+    sload_semantics_dict = storage.set_index('stmtID')['semantic'].to_dict()
+    # #谓词（CALL、SLOAD、CALLVALUE等）授权块（宽松的检查块）
+    ddg = build_data_dependency_graph(df_defines, df_uses)
+    BASE_CHECK_BLOCKS, checkBlock_des_dict = extract_predicate_slices(ddg, df_opcodes, df_stmts_in_block,
+                                                                      sload_semantics_dict)
+    # # 提取arg和状态交汇的检查块(严格的检查块规则)
+    df_allArgs = pd.concat([df_publicArgs, df_formalArgs], ignore_index=True)
+    TRUE_AUTH_BLOCKS_PUBLICARGS = extract_arg_state_rendezvous(ddg, df_defines, df_allArgs, df_opcodes,
+                                                               df_stmts_in_block)
+    # 提取caller和状态交汇的检查块(严格的检查块规则)
+    CALLER_STATE_AUTH_BLOCKS = extract_caller_state_rendezvous(ddg, df_opcodes, df_stmts_in_block)
+    # print(CALLER_STATE_AUTH_BLOCKS)
+
+    # 提取msg.value和状态交汇的检查块(严格的检查块规则)
+    CALLVALUE_STATE_AUTH_BLOCKS = extract_value_state_rendezvous(ddg, df_opcodes, df_stmts_in_block)
+    # print(CALLVALUE_STATE_AUTH_BLOCKS)
+    # 调试用手动注入检查块
+    # Manual_check_block = ['0x31eaB0x2327B0x253dB0xe96']
+    Manual_check_block = []
+    AUTH_BLOCKS = list(TRUE_AUTH_BLOCKS_PUBLICARGS) + list(CALLER_STATE_AUTH_BLOCKS) + list(
+        CALLVALUE_STATE_AUTH_BLOCKS) + Manual_check_block + list(BASE_CHECK_BLOCKS)
+    # print(AUTH_BLOCKS)
+    # 提取call指令所在区块视作潜在的检查块（检查逻辑存在于调用函数中的情况），考虑要不要进一步细分外部合约调用
+    POTENTIAL_AUTH_BLOCKS = list(df_functionCall.iloc[:, 0])
+    # print(POTENTIAL_AUTH_BLOCKS)
+    return AUTH_BLOCKS, checkBlock_des_dict, POTENTIAL_AUTH_BLOCKS
+
+
 
 if __name__ == "__main__":
     # b, graph_index = generate_ListandGraph(CONTRACT_ARTIFACTS_PATH)

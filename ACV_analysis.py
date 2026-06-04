@@ -33,6 +33,9 @@ def ACV_analysis(artifacts_path, df_functionCall, df_block_in_func, emitting_fun
 def detect_incomplete_AC(artifacts_path, df_functionCall, df_block_in_func, target_funcs_info, func_call_graph,
                          global_control_flow_graph,
                          df_functionReturn, AUTH_BLOCKS, POTENTIAl_AUTH_BLOCKS, checkBlock_des_dict, func_tag):
+    # 逻辑标志，源链函数为0，目标链为1
+    # 源链需要检查balance, supportness
+    # 目标链需要
     # ==========================================
     # 1. 预加载与数据清洗
     # ==========================================

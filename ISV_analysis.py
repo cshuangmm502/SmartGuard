@@ -7,25 +7,30 @@ import itertools
 
 # 1.比较不同调用路径的支配块数量
 # 2.检查deposit_event，informing_event与实际行为的一致性
-def ISV_analysis(artifacts_path, emitting_functions, df_opcodes, df_uses):
+def ISV_analysis(artifacts_path, emitting_functions, df_opcodes, df_uses, df_defines, df_formalArgs):
     print(f"\n=======================================================")
     print(f"🎯 开始进行源链行为差异分析 ")
     print(f"=======================================================")
     # source_divergence_analysis(artifacts_path, df_functionCall, df_block_in_func, emitting_functions, func_call_graph,
     #              global_control_flow_graph, df_functionReturn,
     #              AUTH_BLOCKS, POTENTIAl_AUTH_BLOCKS, checkBlock_des_dict)
-    # print(emitting_functions)
+
     confused_results = source_divergence_analysis(emitting_functions)
     if len(confused_results) == 0:
         print("[*] 分析完成，源链行为不存在差异性混淆")
     else:
         print("[*] 分析完成，源链行为存在差异性混淆")
         print(confused_results)
+
     print(f"\n=======================================================")
     print(f"🎯 开始进行结算依赖分析 ")
     print(f"=======================================================")
-    results = extract_log_direct_args("0x848", df_opcodes, df_uses)
-    print(results)
+    # print(emitting_functions)
+    sd_results = settlement_dependency_analysis(emitting_functions, df_uses, df_defines, df_opcodes, df_formalArgs)
+    print(sd_results)
+
+    # results = extract_log_direct_args("0x848", df_opcodes, df_uses)
+    # print(results)
 
 
 def source_divergence_analysis(emitting_functions):
@@ -67,8 +72,57 @@ def source_divergence_analysis(emitting_functions):
     return divergence_results
 
 
-def settlement_dependency_analysis():
-    print()
+def settlement_dependency_analysis(emitting_functions, df_uses, df_defines, df_opcodes, df_formalArgs):
+    function_summaries = []
+
+    for func in emitting_functions:
+        event_func = func['func_id']
+        args = df_formalArgs[df_formalArgs['func_entry_block'] == event_func]['var']
+
+        excluded_args = find_private_return_args(
+            function_args=args,
+            uses=df_uses,
+            tac_ops=df_opcodes,
+        )
+        args_status = []
+
+        for arg in args:
+
+            if arg in excluded_args: continue
+            result = forward_trace_arg(arg, df_uses, df_defines, df_opcodes)
+            # print(result)
+            role = classify_function_arg(result)
+            result['role'] = role
+            args_status.append(result)
+
+        func_summary = {
+            "func_id": event_func,
+            "event_name": func["event_name"],
+            "event_stmtID": func["stmtID"],
+            "business_args": args_status
+        }
+        function_summaries.append(func_summary)
+
+    dependency_results = analyze_all_function_dependencies(function_summaries)
+
+    return dependency_results
+
+
+def analyze_all_function_dependencies(
+        function_summaries
+):
+    results = []
+
+    for func_summary in function_summaries:
+        result = evaluate_function_dependency(
+            func_summary
+        )
+
+        results.append(
+            result
+        )
+
+    return results
 
 
 # def analyze_settlement_dependency(tac_list, log_stmt_id, target_vars):
@@ -174,32 +228,55 @@ def extract_log_direct_args(log_stmt, tac_ops, uses):
 
 
 def forward_trace_arg(
-    start_var,
-    uses,
-    defines,
-    tac_ops,
-    max_depth=30,
+        start_var,
+        uses,
+        defines,
+        tac_ops,
+        max_depth=30,
 ):
     """
-    从函数参数或 CALLVALUE 变量出发执行正向数据流追踪。
+    从函数参数出发执行正向数据流追踪。
 
     返回：
-    - 到达的 Event 指令；
-    - 到达的状态变化指令；
-    - 经过的辅助语义操作。
+    - Event sinks；
+    - 当前合约的直接 storage 写入；
+    - 外部合约调用；
+    - 内部辅助函数调用；
+    - 中间语义操作。
     """
+
     EVENT_SINKS = {
-        "LOG0", "LOG1", "LOG2", "LOG3", "LOG4"
+        "LOG0",
+        "LOG1",
+        "LOG2",
+        "LOG3",
+        "LOG4",
     }
 
-    STATE_CHANGE_SINKS = {
-        "SSTORE", "CALL"
+    STATE_SINKS = {
+        "SSTORE",
+    }
+
+    EXTERNAL_CALL_SINKS = {
+        "CALL",
+    }
+
+    PRIVATE_CALL_SINKS = {
+        "CALLPRIVATE",
     }
 
     SEMANTIC_OPS = {
-        "ADD", "SUB", "MUL", "DIV",
-        "EQ", "LT", "GT",
-        "AND", "OR", "SHA3", "MSTORE"
+        "ADD",
+        "SUB",
+        "MUL",
+        "DIV",
+        "EQ",
+        "LT",
+        "GT",
+        "AND",
+        "OR",
+        "SHA3",
+        "MSTORE",
     }
 
     queue = deque([
@@ -211,6 +288,8 @@ def forward_trace_arg(
 
     event_sinks = []
     state_sinks = []
+    external_call_sinks = []
+    private_call_sinks = []
     semantic_ops = []
 
     while queue:
@@ -226,7 +305,7 @@ def forward_trace_arg(
 
         use_rows = uses[
             uses["var"] == var_id
-        ]
+            ]
 
         for _, use_row in use_rows.iterrows():
             stmt_id = use_row["stmtID"]
@@ -238,37 +317,49 @@ def forward_trace_arg(
 
             op_rows = tac_ops[
                 tac_ops["stmtID"] == stmt_id
-            ]
+                ]
 
             if op_rows.empty:
                 continue
 
-            op = str(
-                op_rows.iloc[0]["op"]
+            opcode = str(
+                op_rows.iloc[0]["opcode"]
             ).upper()
 
-            if op in EVENT_SINKS:
-                event_sinks.append({
-                    "stmtID": stmt_id,
-                    "op": op,
-                })
+            sink_item = {
+                "stmtID": stmt_id,
+                "opcode": opcode,
+            }
 
-            if op in STATE_CHANGE_SINKS:
-                state_sinks.append({
-                    "stmtID": stmt_id,
-                    "op": op,
-                })
+            if opcode in EVENT_SINKS:
+                event_sinks.append(
+                    sink_item
+                )
 
-            if op in SEMANTIC_OPS:
-                semantic_ops.append({
-                    "stmtID": stmt_id,
-                    "op": op,
-                })
+            if opcode in STATE_SINKS:
+                state_sinks.append(
+                    sink_item
+                )
 
-            # 将该语句定义的新变量继续加入队列
+            if opcode in EXTERNAL_CALL_SINKS:
+                external_call_sinks.append(
+                    sink_item
+                )
+
+            if opcode in PRIVATE_CALL_SINKS:
+                private_call_sinks.append(
+                    sink_item
+                )
+
+            if opcode in SEMANTIC_OPS:
+                semantic_ops.append(
+                    sink_item
+                )
+
+            # 对当前语句定义的新变量继续追踪。
             defined_rows = defines[
                 defines["stmtID"] == stmt_id
-            ]
+                ]
 
             for _, defined_row in defined_rows.iterrows():
                 queue.append(
@@ -282,8 +373,15 @@ def forward_trace_arg(
         "source_var": start_var,
         "event_sinks": event_sinks,
         "state_sinks": state_sinks,
+        "external_call_sinks": (
+            external_call_sinks
+        ),
+        "private_call_sinks": (
+            private_call_sinks
+        ),
         "semantic_ops": semantic_ops,
     }
+
 
 # def source_divergence_semantic_analysis(artifacts_path, df_functionCall, df_block_in_func, target_funcs_info, func_call_graph,
 #                          global_control_flow_graph,
@@ -449,6 +547,254 @@ def forward_trace_arg(
 #                 checks_block_info = []
 #                 for block in path_check_blocks:
 #                     checks_block_info.append(checkBlock_des_dict[block])
+
+def classify_function_arg(
+        trace_result
+):
+    flows_to_event = bool(
+        trace_result["event_sinks"]
+    )
+
+    flows_to_mstore = has_opcode(
+        trace_result["semantic_ops"],
+        "MSTORE",
+    )
+
+    # 第一版中，MSTORE 被视为潜在 Event data 编码。
+    event_related = (
+            flows_to_event
+            or flows_to_mstore
+    )
+
+    flows_to_state = bool(
+        trace_result["state_sinks"]
+    )
+
+    flows_to_external_call = bool(
+        trace_result["external_call_sinks"]
+    )
+
+    flows_to_private_call = bool(
+        trace_result["private_call_sinks"]
+    )
+
+    if event_related and flows_to_state:
+        return "EVENT_AND_STATE_RELATED"
+
+    if event_related and flows_to_external_call:
+        return (
+            "EVENT_AND_EXTERNAL_CALL_RELATED"
+        )
+
+    if event_related and flows_to_private_call:
+        return (
+            "EVENT_AND_PRIVATE_CALL_RELATED"
+        )
+
+    if flows_to_event:
+        return "EVENT_RELATED"
+
+    if flows_to_state:
+        return "STATE_RELATED"
+
+    if flows_to_external_call:
+        return "EXTERNAL_CALL_RELATED"
+
+    if flows_to_private_call:
+        return "PRIVATE_CALL_RELATED"
+
+    if flows_to_mstore:
+        return "MEMORY_RELATED"
+
+    return "UNKNOWN"
+
+
+def find_private_return_args(
+        function_args,
+        uses,
+        tac_ops,
+):
+    private_return_args = set()
+
+    return_rows = tac_ops[
+        tac_ops["opcode"].str.upper()
+        == "RETURNPRIVATE"
+        ]
+    # print(return_rows)
+    for _, row in return_rows.iterrows():
+        stmt_id = row["stmtID"]
+
+        used_rows = uses[
+            uses["stmtID"] == stmt_id
+            ].copy()
+
+        if used_rows.empty:
+            continue
+
+        if "index" in used_rows.columns:
+            used_rows = used_rows.sort_values(
+                "index"
+            )
+
+        # RETURNPRIVATE 的第一个参数是返回地址。
+        return_address_var = (
+            used_rows.iloc[0]["var"]
+        )
+
+        if return_address_var in function_args.values:
+            private_return_args.add(
+                return_address_var
+            )
+
+    return private_return_args
+
+
+def has_opcode(items, opcode):
+    return any(
+        item.get("opcode") == opcode
+        for item in items
+    )
+
+
+def evaluate_function_dependency(
+        func_summary
+):
+    business_args = func_summary.get(
+        "business_args",
+        []
+    )
+
+    strong_supporting_args = []
+    indirect_supporting_args = []
+
+    event_related_args = []
+    state_related_args = []
+    external_call_related_args = []
+    private_call_related_args = []
+
+    for arg in business_args:
+        source_var = arg["source_var"]
+
+        event_related = (
+                bool(arg.get("event_sinks"))
+                or has_opcode(
+            arg.get("semantic_ops", []),
+            "MSTORE",
+        )
+        )
+
+        flows_to_state = bool(
+            arg.get("state_sinks")
+        )
+
+        flows_to_external_call = bool(
+            arg.get(
+                "external_call_sinks"
+            )
+        )
+
+        flows_to_private_call = bool(
+            arg.get(
+                "private_call_sinks"
+            )
+        )
+
+        if event_related:
+            event_related_args.append(
+                source_var
+            )
+
+        if flows_to_state:
+            state_related_args.append(
+                source_var
+            )
+
+        if flows_to_external_call:
+            external_call_related_args.append(
+                source_var
+            )
+
+        if flows_to_private_call:
+            private_call_related_args.append(
+                source_var
+            )
+
+        if (
+                event_related
+                and (
+                flows_to_state
+                or flows_to_external_call
+        )
+        ):
+            strong_supporting_args.append(
+                source_var
+            )
+
+        elif (
+                event_related
+                and flows_to_private_call
+        ):
+            indirect_supporting_args.append(
+                source_var
+            )
+
+    if strong_supporting_args:
+        status = "DEPENDENCY_FOUND"
+        confidence = "HIGH"
+        supporting_args = (
+            strong_supporting_args
+        )
+
+    elif indirect_supporting_args:
+        status = (
+            "DEPENDENCY_FOUND_VIA_PRI VATE_CALL"
+        )
+        confidence = "MEDIUM"
+        supporting_args = (
+            indirect_supporting_args
+        )
+
+    elif event_related_args:
+        status = "DEPENDENCY_MISSING"
+        confidence = "MEDIUM"
+        supporting_args = []
+
+    else:
+        status = "DEPENDENCY_UNKNOWN"
+        confidence = "LOW"
+        supporting_args = []
+
+    return {
+        "func_id": func_summary.get(
+            "func_id"
+        ),
+        "event_name": func_summary.get(
+            "event_name"
+        ),
+        "event_stmtID": func_summary.get(
+            "event_stmtID"
+        ),
+
+        "dependency_status": status,
+        "confidence": confidence,
+
+        "supporting_args": (
+            supporting_args
+        ),
+        "event_related_args": sorted(
+            set(event_related_args)
+        ),
+        "state_related_args": sorted(
+            set(state_related_args)
+        ),
+        "external_call_related_args": sorted(
+            set(external_call_related_args)
+        ),
+        "private_call_related_args": sorted(
+            set(private_call_related_args)
+        ),
+    }
+
 
 if __name__ == "__main__":
     # ========== 测试数据演示 ==========
