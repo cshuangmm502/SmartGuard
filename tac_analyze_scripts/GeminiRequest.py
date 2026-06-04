@@ -256,6 +256,7 @@ def call_llm_api_supportness_check(guard_blocks, guard_info):
     res = conn.getresponse()
     return res
 
+
 def call_llm_api_repeat_check(guard_blocks, guard_info):
     conn = http.client.HTTPSConnection("jeniya.cn")
     payload = json.dumps({
@@ -344,6 +345,149 @@ def call_llm_api_repeat_check(guard_blocks, guard_info):
     res = conn.getresponse()
     return res
 
+
+def call_llm_api_balance_check(guard_blocks, guard_info):
+    conn = http.client.HTTPSConnection("jeniya.cn")
+    payload = json.dumps({
+        "model": "gpt-5.4",
+        "messages": [
+            {
+                "role": "system",
+                "content": """
+                        You are a smart contract static-analysis agent.
+
+                        Task:
+                        Given guard blocks extracted from dominator-tree analysis of a TAC path, decide whether the path is protected by a BALANCE_CHECK.
+
+                        BALANCE_CHECK means a dominating guard validates whether a deposit, lock, burn, or transfer-out operation has sufficient assets or liquidity, including:
+                        - user balance compared with deposit amount
+                        - allowance compared with transfer amount
+                        - bridge balance after deposit compared with balance before deposit
+                        - bridge liquidity or reserve compared with amount or threshold
+                        - min/max token amount constraints
+
+                        Known balance knowledge (from SmartAxe):
+                        balance, allowance, deposit, balanceOf, depositETH, redeem, vaultAllowance,
+                        minStakedTokens, minAmounts, depositCounts, unlockedBalanceOf, lockedBalanceOf,
+                        minTokenAmount, maxTokenAmount, released, allowed, totalSupply, bridgeSend,
+                        transferOut, minterAllowance, eTHReserve, tokenBalance, swapStorage.
+
+                        Decision rules:
+                        1. A semantic BALANCE_CHECK requires a dominating comparison guard.
+                        2. Variable occurrence alone is only a knowledge-base match.
+                        3. Generic balance, deposit, fee, totalSupply, or transferOut occurrence without 
+                        comparison does not prove BALANCE_CHECK.
+                        4. msg.value != 0 alone is only POSSIBLE.
+                        5. CALLER checks are authorization, not BALANCE_CHECK.
+                        6. Unknown stor_x comparisons are POSSIBLE conservatively.
+                        7. Output yes when the comparison clearly resembles amount, balance, reserve, or liquidity validation.
+
+                        Output JSON only.
+                        """
+            },
+            {
+                "role": "user",
+                "content": f"""
+                        Protected guard blocks:
+                        {guard_blocks}
+
+                        Guard block details:
+                        {guard_info}
+
+                        Return exactly:
+                        {{
+                          "knowledge_base_match": "YES|NO",
+                          "semantic_balance_check": "YES|POSSIBLE|NO",
+                          "confidence": "HIGH|MEDIUM|LOW",
+                          "evidence": [],
+                          "non_balance_guards": [],
+                          "reason": "short reason"
+                        }}
+                        """
+            }
+        ]
+    })
+    headers = {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer sk-FKWJV2ihsuWQ4SJ8PW7T0mtYxJL9DyHnAxVod9kf8BuS1Mf3',
+        'Content-Type': 'application/json'
+    }
+    conn.request("POST", "/v1/chat/completions", payload, headers)
+    res = conn.getresponse()
+    return res
+
+
+def call_llm_api_signature_check(guard_blocks, guard_info):
+    conn = http.client.HTTPSConnection("jeniya.cn")
+    payload = json.dumps({
+        "model": "gpt-5.4",
+        "messages": [
+            {
+                "role": "system",
+                "content": """
+                            You are a smart contract static-analysis agent.
+
+                            Task:
+                            Given guard blocks extracted from dominator-tree analysis of a TAC path, decide whether the path is protected by a BALANCE_CHECK.
+
+                            BALANCE_CHECK means a dominating guard validates whether a deposit, lock, burn, or transfer-out operation has sufficient assets or liquidity, including:
+                            - user balance compared with deposit amount
+                            - allowance compared with transfer amount
+                            - bridge balance after deposit compared with balance before deposit
+                            - bridge liquidity or reserve compared with amount or threshold
+                            - min/max token amount constraints
+
+                            Known balance knowledge (from SmartAxe):
+                            balance, allowance, deposit, balanceOf, depositETH, redeem, vaultAllowance,
+                            minStakedTokens, minAmounts, depositCounts, unlockedBalanceOf, lockedBalanceOf,
+                            minTokenAmount, maxTokenAmount, released, allowed, totalSupply, bridgeSend,
+                            transferOut, minterAllowance, eTHReserve, tokenBalance, swapStorage.
+
+                            Decision rules:
+                            1. A semantic BALANCE_CHECK requires a dominating comparison guard.
+                            2. Variable occurrence alone is only a knowledge-base match.
+                            3. Generic balance, deposit, fee, totalSupply, or transferOut occurrence without 
+                            comparison does not prove BALANCE_CHECK.
+                            4. msg.value != 0 alone is only POSSIBLE.
+                            5. CALLER checks are authorization, not BALANCE_CHECK.
+                            6. Unknown stor_x comparisons are POSSIBLE conservatively.
+                            7. Output yes when the comparison clearly resembles amount, balance, reserve, or liquidity validation.
+
+                            Output JSON only.
+                            """
+            },
+            {
+                "role": "user",
+                "content": f"""
+                            Protected guard blocks:
+                            {guard_blocks}
+
+                            Guard block details:
+                            {guard_info}
+
+                            Return exactly:
+                            {{
+                              "knowledge_base_match": "YES|NO",
+                              "semantic_balance_check": "YES|POSSIBLE|NO",
+                              "confidence": "HIGH|MEDIUM|LOW",
+                              "evidence": [],
+                              "non_balance_guards": [],
+                              "reason": "short reason"
+                            }}
+                            """
+            }
+        ]
+    })
+    headers = {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer sk-FKWJV2ihsuWQ4SJ8PW7T0mtYxJL9DyHnAxVod9kf8BuS1Mf3',
+        'Content-Type': 'application/json'
+    }
+    conn.request("POST", "/v1/chat/completions", payload, headers)
+    res = conn.getresponse()
+    return res
+
+
 def process_llm_response(result):
     raw = result.read().decode("utf-8")
     # 第一层：解析 API 返回的整体 JSON
@@ -376,6 +520,8 @@ def process_llm_response(result):
     print(result)
     return result
 
+
+# 上下文中补充storage的语义
 # python3 main.py
 if __name__ == "__main__":
     os.environ["http_proxy"] = "http://localhost:7890"

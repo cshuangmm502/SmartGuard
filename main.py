@@ -125,11 +125,11 @@ def vulnerability_analysis(artifacts_path, contract_name):
                                                                                    storage, df_publicArgs,
                                                                                    df_formalArgs, df_functionCall)
 
-    ACV_analysis(artifacts_path, df_functionCall, df_block_in_func, emitting_functions, informing_functions, fcg,
-                 global_cfg, df_functionReturn, AUTH_BLOCKS, POTENTIAL_AUTH_BLOCKS, authBlock_des_dict)
-
-    # 不一致的语义检测
-    ISV_analysis(artifacts_path, emitting_functions, df_opcodes, df_uses, df_defines, df_formalArgs)
+    # ACV_analysis(artifacts_path, df_functionCall, df_block_in_func, emitting_functions, informing_functions, fcg,
+    #              global_cfg, df_functionReturn, AUTH_BLOCKS, POTENTIAL_AUTH_BLOCKS, authBlock_des_dict)
+    #
+    # # 不一致的语义检测
+    # ISV_analysis(artifacts_path, emitting_functions, df_opcodes, df_uses, df_defines, df_formalArgs)
 
 # python3 main.py
 if __name__ == "__main__":

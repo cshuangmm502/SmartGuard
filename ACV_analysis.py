@@ -6,7 +6,7 @@ from SC_extract import (extract_used_storage_in_controlflow, extract_used_caller
                         extract_used_callData_in_controlFlow, extract_used_callPubArgs_in_controlFlow,
                         extract_used_callPriArgs_in_controlFlow)
 from tac_analyze_scripts.GeminiRequest import call_llm_api_supportness_check, process_llm_response, \
-    call_llm_api_repeat_check
+    call_llm_api_repeat_check, call_llm_api_signature_check
 
 
 def ACV_analysis(artifacts_path, df_functionCall, df_block_in_func, emitting_functions, informing_functions, func_call_graph,
@@ -239,10 +239,13 @@ def detect_incomplete_AC(artifacts_path, df_functionCall, df_block_in_func, targ
                 f.write(json.dumps(support_check_result, ensure_ascii=False, indent=2))
                 f.write("\n\n")
 
-            # repeat分析只作用于目标链逻辑
+            # repeat, signature分析只作用于目标链逻辑
             if func_tag == 1:
-                response = call_llm_api_repeat_check(path_check_blocks, checks_block_info)
-                repeat_check_result = process_llm_response(response)
+                repeat_check_response = call_llm_api_repeat_check(path_check_blocks, checks_block_info)
+                repeat_check_result = process_llm_response(repeat_check_response)
+
+                # signature_check_response = call_llm_api_signature_check(path_check_blocks, checks_block_info)
+                # signature_check_result = process_llm_response(signature_check_response)
                 # print(repeat_check_result)
                 with open(LOG_FILE, "a", encoding="utf-8") as f:
                     f.write("repeat_check_analysis_result:\n")

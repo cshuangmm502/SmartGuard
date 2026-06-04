@@ -6,13 +6,9 @@
   <component name="ChangeListManager">
     <list default="true" id="eb75d3a5-fd03-489b-9330-e543d0f420c4" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/ACV_analysis.py" beforeDir="false" afterPath="$PROJECT_DIR$/ACV_analysis.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/ISV_analysis.py" beforeDir="false" afterPath="$PROJECT_DIR$/ISV_analysis.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/contracts/ChainSwap/output_debug/callPriArgs.xlsx" beforeDir="false" afterPath="$PROJECT_DIR$/contracts/ChainSwap/output_debug/callPriArgs.xlsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/contracts/ChainSwap/output_debug/semantic_analysis.txt" beforeDir="false" afterPath="$PROJECT_DIR$/contracts/ChainSwap/output_debug/semantic_analysis.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/contracts/ChainSwap/logs/smartguard.log" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tac_analysis.py" beforeDir="false" afterPath="$PROJECT_DIR$/tac_analysis.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/xCFG.py" beforeDir="false" afterPath="$PROJECT_DIR$/xCFG.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tac_analyze_scripts/GeminiRequest.py" beforeDir="false" afterPath="$PROJECT_DIR$/tac_analyze_scripts/GeminiRequest.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -200,7 +196,7 @@
       <workItem from="1779084316748" duration="43623000" />
       <workItem from="1779328344113" duration="5000" />
       <workItem from="1779416991490" duration="1917000" />
-      <workItem from="1780318503080" duration="49873000" />
+      <workItem from="1780318503080" duration="53716000" />
     </task>
     <servers />
   </component>
@@ -219,7 +215,7 @@
     </breakpoint-manager>
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
-    <SUITE FILE_PATH="coverage/SmartGuard$main.coverage" NAME="main Coverage Results" MODIFIED="1780478813424" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/SmartGuard$main.coverage" NAME="main Coverage Results" MODIFIED="1780555567159" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/SmartGuard$ISV_analysis.coverage" NAME="ISV_analysis Coverage Results" MODIFIED="1780297057845" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/SmartGuard$download_etherscan_sources.coverage" NAME="download_etherscan_sources Coverage Results" MODIFIED="1777549586764" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/contracts" />
     <SUITE FILE_PATH="coverage/SmartGuard$xCFG.coverage" NAME="xCFG Coverage Results" MODIFIED="1775135779681" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
