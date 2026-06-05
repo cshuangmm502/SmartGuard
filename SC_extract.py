@@ -14,12 +14,8 @@ def parsefromdecompiledcode(decompiledcode_file) \
 
     decompiledcode.columns = ["decompiledcode"]
     # 2. 初始化 DataFrame (新增 "Name" 列)
-    # Semantic: 存储 0x... (Slot ID)
-    # Name:     存储 变量名 (如 _owner, _balances)
-    Stor_semantic = pd.DataFrame(columns=["describtion", "state_variable", "Semantic", "Name"])
-    Map_semantic = pd.DataFrame(columns=["describtion", "mapping_variable", "Semantic", "Name"])
 
-    Storage_semantic = pd.DataFrame(columns=['description', 'semantic','var_type', 'slot', 'slot_Offset'])
+    Storage_semantic = pd.DataFrame(columns=['description', 'semantic', 'semantic_with_type','var_type', 'slot', 'slot_Offset'])
 
     in_variable_zone = True
 
@@ -68,15 +64,12 @@ def parsefromdecompiledcode(decompiledcode_file) \
             if map_match:
                 var_name = map_match.group(1)
 
-                # new_row = pd.Series({
-                #     "describtion": line,
-                #     "mapping_variable": var_name,  # 保持原格式
-                #     "Semantic": current_slot_id,  # 存 Slot ID (0x...)
-                #     "Name": var_name  # 【新增】存变量名
-                # })
+                semantic_type = re.match(r"^[^;]*", line)
+                result = semantic_type.group().strip()
                 new_row = pd.Series({
                     "description": line,  # 原语句
                     "semantic": var_name,  # 带语义的变量名
+                    "semantic_with_type": result,  # 带类型,语义的变量名
                     "var_type": 1,  # 变量状态类型：0 -> 普通状态变量，1 -> mapping
                     "slot": current_slot_id,  # 【新增】存变量名
                     "slot_Offset": slot_Offset # 存储槽内的存储地址
@@ -97,9 +90,12 @@ def parsefromdecompiledcode(decompiledcode_file) \
                 var_name = var_match.group(2)
 
                 if var_type not in ["event", "error", "using", "mapping"]:
+                    semantic_type = re.match(r"^[^;]*", line)
+                    result = semantic_type.group().strip()
                     new_row = pd.Series({
                         "description": line,  # 原语句
                         "semantic": var_name,  # 带语义的变量名
+                        "semantic_with_type": result,       # 带类型,语义的变量名
                         "var_type": 0,  # 变量状态类型：0 -> 普通状态变量，1 -> mapping
                         "slot": current_slot_id,  # 【新增】存变量名
                         "slot_Offset": slot_Offset  # 存储槽内的存储地址

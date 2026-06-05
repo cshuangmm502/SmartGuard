@@ -42,7 +42,7 @@ def extract_all_storage(df_opcodes, df_defines, df_uses, df_var_values, df_mappi
     sload_stmts = opcodes[opcodes['opcode'] == 'SLOAD']['stmtID'].tolist()
 
     storage = pd.DataFrame(
-        columns=['stmtID', 'variable', 'slot', 'semantic', 'var_type', 'is_package', 'slot_Offset', 'describe',
+        columns=['stmtID', 'variable', 'slot', 'semantic', 'semantic_with_type', 'var_type', 'is_package', 'slot_Offset', 'describe',
                  'blockID'])
 
     for sload_stmt in sload_stmts:
@@ -195,7 +195,7 @@ def extract_all_storage(df_opcodes, df_defines, df_uses, df_var_values, df_mappi
             pack_info = f"bytes {start_byte} to {end_byte}"
         # print(f"{sload_stmt:<12} | {key_var:<10} | {base_slot:<35} | {sload_type:<12} | {is_package_slot} | {pack_info} | {sload_type_info} " )
         line = pd.Series(
-            {'stmtID': sload_stmt, 'variable': key_var, 'slot': base_slot, 'semantic': "None", 'var_type': sload_type,
+            {'stmtID': sload_stmt, 'variable': key_var, 'slot': base_slot, 'semantic': "None", 'semantic_with_type': "None", 'var_type': sload_type,
              'is_package': is_package_slot, 'slot_Offset': pack_info, 'describe': sload_type_info, 'blockID': '0'})
         storage = storage.append(line, ignore_index=True)
 
@@ -203,6 +203,7 @@ def extract_all_storage(df_opcodes, df_defines, df_uses, df_var_values, df_mappi
     storage_semantic = storage_semantic.set_index(['slot', 'slot_Offset'])
     storage = storage.set_index(['slot', 'slot_Offset'])
     storage['semantic'].update(storage_semantic['semantic'])
+    storage['semantic_with_type'].update(storage_semantic['semantic_with_type'])
     storage = storage.reset_index()
 
     stmt_block = stmt_block.set_index(['stmtID'])

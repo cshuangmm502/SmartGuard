@@ -99,6 +99,7 @@ def vulnerability_analysis(artifacts_path, contract_name):
     # storage_semantic.to_excel(out_dir / "storage_semantic.xlsx", index=False)
     storage = extract_all_storage(df_opcodes, df_defines, df_uses, df_var_values, df_mapping_slot, df_stmts_in_block,
                                   storage_semantic)
+    # print(storage)
     # storage.to_excel(out_dir / "storage.xlsx", index=False)
     caller, callData = extract_all_publicFunc_call(df_opcodes, df_defines, df_uses, df_var_values, df_stmts_in_block)
     # caller.to_excel(out_dir / "caller.xlsx", index=False)
@@ -123,13 +124,13 @@ def vulnerability_analysis(artifacts_path, contract_name):
     AUTH_BLOCKS, authBlock_des_dict, POTENTIAL_AUTH_BLOCKS = build_AC_check_blocks(df_defines, df_uses,
                                                                                    df_opcodes, df_stmts_in_block,
                                                                                    storage, df_publicArgs,
-                                                                                   df_formalArgs, df_functionCall)
+                                                                                   df_formalArgs, df_functionCall, df_var_values)
 
-    # ACV_analysis(artifacts_path, df_functionCall, df_block_in_func, emitting_functions, informing_functions, fcg,
-    #              global_cfg, df_functionReturn, AUTH_BLOCKS, POTENTIAL_AUTH_BLOCKS, authBlock_des_dict)
-    #
-    # # 不一致的语义检测
-    # ISV_analysis(artifacts_path, emitting_functions, df_opcodes, df_uses, df_defines, df_formalArgs)
+    ACV_analysis(artifacts_path, df_functionCall, df_block_in_func, emitting_functions, informing_functions, fcg,
+                 global_cfg, df_functionReturn, AUTH_BLOCKS, POTENTIAL_AUTH_BLOCKS, authBlock_des_dict)
+
+    # 不一致的语义检测
+    ISV_analysis(artifacts_path, emitting_functions, df_opcodes, df_uses, df_defines, df_formalArgs)
 
 # python3 main.py
 if __name__ == "__main__":
@@ -137,8 +138,8 @@ if __name__ == "__main__":
     PROJECT_ROOT = Path(__file__).resolve().parent
     CONTRACTS_PATH = PROJECT_ROOT / "contracts"
     # CONTRACT_NAME = "0x0cD79409eD80d8a153A3c729aa1f8b5D44A29282"
-    CONTRACT_NAME = "ChainSwap"
-    # CONTRACT_NAME = "0x0aBCFbfA8e3Fda8B7FBA18721Caf7d5cf55cF5f5"
+    # CONTRACT_NAME = "ChainSwap"
+    CONTRACT_NAME = "0x0aBCFbfA8e3Fda8B7FBA18721Caf7d5cf55cF5f5"
     CONTRACT_ARTIFACTS_PATH = CONTRACTS_PATH / CONTRACT_NAME
     setup_logging(CONTRACT_ARTIFACTS_PATH)
     logger.info("SmartGuard 启动")

@@ -35,7 +35,7 @@ def detect_incomplete_AC(artifacts_path, df_functionCall, df_block_in_func, targ
                          df_functionReturn, AUTH_BLOCKS, POTENTIAl_AUTH_BLOCKS, checkBlock_des_dict, func_tag):
     # 逻辑标志，源链函数为0，目标链为1
     # 源链需要检查balance, supportness
-    # 目标链需要
+    # 目标链需要检查repetitiveness, signature
     # ==========================================
     # 1. 预加载与数据清洗
     # ==========================================
@@ -219,37 +219,67 @@ def detect_incomplete_AC(artifacts_path, df_functionCall, df_block_in_func, targ
                 checks_block_info.append(checkBlock_des_dict[block])
 
 
-            # 调用LLM接口执行supportness检查
-            response = call_llm_api_supportness_check(path_check_blocks, checks_block_info)
-            # 提取结果
-            support_check_result = process_llm_response(response)
-            # print(support_check_result)
+            # # 调用LLM接口执行supportness检查
+            # response = call_llm_api_supportness_check(path_check_blocks, checks_block_info)
+            # # 提取结果
+            # support_check_result = process_llm_response(response)
+            # # print(support_check_result)
+            #
+            # # 写入 semantic_analysis.txt
+            # with open(LOG_FILE, "a", encoding="utf-8") as f:
+            #     f.write("=" * 100 + "\n")
+            #     f.write(f"func_path: {func_path}\n")
+            #     f.write(f"suffered check blocks: {path_check_blocks}\n\n")
+            #
+            #     f.write("checks_block_info:\n")
+            #     for block in path_check_blocks:
+            #         f.write(f"check block {str(block)} {str(checkBlock_des_dict[block])} \n")
+            #
+            #     f.write("\nsupport_check_analysis_result:\n")
+            #     f.write(json.dumps(support_check_result, ensure_ascii=False, indent=2))
+            #     f.write("\n\n")
 
-            # 写入 semantic_analysis.txt
-            with open(LOG_FILE, "a", encoding="utf-8") as f:
-                f.write("=" * 100 + "\n")
-                f.write(f"func_path: {func_path}\n")
-                f.write(f"suffered check blocks: {path_check_blocks}\n\n")
+            # supportness分析只作用于源链
+            if func_tag == 0:
+                response = call_llm_api_supportness_check(path_check_blocks, checks_block_info)
+                support_check_result = process_llm_response(response)
 
-                f.write("checks_block_info:\n")
-                for block in path_check_blocks:
-                    f.write(f"check block {str(block)} {str(checkBlock_des_dict[block])} \n")
+                with open(LOG_FILE, "a", encoding="utf-8") as f:
+                    f.write("=" * 100 + "\n")
+                    f.write(f"func_path: {func_path}\n")
+                    f.write(f"suffered check blocks: {path_check_blocks}\n\n")
 
-                f.write("\nsupport_check_analysis_result:\n")
-                f.write(json.dumps(support_check_result, ensure_ascii=False, indent=2))
-                f.write("\n\n")
+                    f.write("checks_block_info:\n")
+                    for block in path_check_blocks:
+                        f.write(f"check block {str(block)} {str(checkBlock_des_dict[block])} \n")
+
+                    f.write("\nsupport_check_analysis_result:\n")
+                    f.write(json.dumps(support_check_result, ensure_ascii=False, indent=2))
+                    f.write("\n\n")
 
             # repeat, signature分析只作用于目标链逻辑
             if func_tag == 1:
                 repeat_check_response = call_llm_api_repeat_check(path_check_blocks, checks_block_info)
                 repeat_check_result = process_llm_response(repeat_check_response)
 
-                # signature_check_response = call_llm_api_signature_check(path_check_blocks, checks_block_info)
-                # signature_check_result = process_llm_response(signature_check_response)
+                signature_check_response = call_llm_api_signature_check(path_check_blocks, checks_block_info)
+                signature_check_result = process_llm_response(signature_check_response)
                 # print(repeat_check_result)
                 with open(LOG_FILE, "a", encoding="utf-8") as f:
+                    f.write("=" * 100 + "\n")
+                    f.write(f"func_path: {func_path}\n")
+                    f.write(f"suffered check blocks: {path_check_blocks}\n\n")
+
+                    f.write("checks_block_info:\n")
+                    for block in path_check_blocks:
+                        f.write(f"check block {str(block)} {str(checkBlock_des_dict[block])} \n")
+
                     f.write("repeat_check_analysis_result:\n")
                     f.write(json.dumps(repeat_check_result, ensure_ascii=False, indent=2))
+                    f.write("\n\n")
+
+                    f.write("signature_check_analysis_result:\n")
+                    f.write(json.dumps(signature_check_result, ensure_ascii=False, indent=2))
                     f.write("\n\n")
 
             analysis_report.append({

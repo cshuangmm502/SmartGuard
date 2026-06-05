@@ -1,0 +1,78 @@
+====================================================================================================
+func_path: ['0x0', '0x419']
+suffered check blocks: ['0x0', '0x99d', '0x60b']
+
+checks_block_info:
+check block 0x0 业务约束逻辑: [Existence/Non-Zero Check on: msg.value],驱动此判断的数据源: CALLVALUE 
+check block 0x99d 业务约束逻辑: [CONST(0x1) EQ msg.sender],驱动此判断的数据源: CALLER 
+check block 0x60b 业务约束逻辑: [Storage[uint256 stor_7] LT Computed_Value],驱动此判断的数据源: SLOAD 
+
+support_check_analysis_result:
+{
+  "semantic_supportness_check": "NO",
+  "confidence": "HIGH",
+  "supportness_evidence": [],
+  "non_support_guards": [
+    {
+      "block": "0x0",
+      "type": "PAYMENT",
+      "reason": "msg.value non-zero check is a payment/business constraint, not a supportness validation"
+    },
+    {
+      "block": "0x99d",
+      "type": "AUTHORIZATION",
+      "reason": "msg.sender equality check is an authorization check, not a supportness validation"
+    },
+    {
+      "block": "0x60b",
+      "type": "UNKNOWN_STORAGE",
+      "reason": "guard uses generic storage slot stor_7 with no recovered supportness semantic name; LT comparison alone is insufficient to identify chain/resource/token/router support validation"
+    }
+  ],
+  "reason": "No guard block shows a recovered supportness variable or a clearly identifiable support-validation condition. The observed guards are payment, authorization, and an untyped generic storage comparison."
+}
+
+====================================================================================================
+🏁 扫描完成。共分析了 1 条路径。
+====================================================================================================
+func_path: ['0x0', '0x318']
+suffered check blocks: ['0x0', '0x10ae']
+
+checks_block_info:
+check block 0x0 业务约束逻辑: [Existence/Non-Zero Check on: msg.value],驱动此判断的数据源: CALLVALUE 
+check block 0x10ae 业务约束逻辑: [Existence/Non-Zero Check on: msg.sender],驱动此判断的数据源: CALLER 
+repeat_check_analysis_result:
+{
+  "semantic_repetitiveness_check": "NO",
+  "confidence": "HIGH",
+  "repetitiveness_evidence": [],
+  "non_repetitiveness_guards": [
+    {
+      "block": "0x0",
+      "type": "PAYMENT",
+      "reason": "Guard checks msg.value non-zero; this is a payment/business constraint, not duplicate/replay prevention."
+    },
+    {
+      "block": "0x10ae",
+      "type": "AUTHORIZATION",
+      "reason": "Guard checks msg.sender existence/non-zero; caller-related checks are authorization-related, not repetitiveness checks."
+    }
+  ],
+  "reason": "The protected guards only involve msg.value and msg.sender. Per the rules, payment and caller checks are not repetitiveness checks, and there is no guard on nonce, vote record, deposit record, or processed/executed/claimed status."
+}
+
+signature_check_analysis_result:
+{
+  "knowledge_base_match": "NO",
+  "semantic_balance_check": "POSSIBLE",
+  "confidence": "MEDIUM",
+  "evidence": [],
+  "non_balance_guards": [
+    "Existence/Non-Zero Check on: msg.value",
+    "Existence/Non-Zero Check on: msg.sender"
+  ],
+  "reason": "Only msg.value != 0 and msg.sender non-zero/caller checks are present; there is no dominating comparison validating balance, allowance, reserve, liquidity, or amount thresholds. Per rules, msg.value != 0 alone is only POSSIBLE."
+}
+
+====================================================================================================
+🏁 扫描完成。共分析了 1 条路径。
