@@ -938,7 +938,7 @@ def extract_predicate_slices(DDG, df_opcode, df_block, sload_semantics_dict, con
     checkBlock_des_dict = dict()
     # diagnose_jumpi(DDG, opcode_dict, '0xec1')
     # 1. 定义我们关心的所有关键数据源
-    CRITICAL_SOURCES = {'CALLER', 'ORIGIN', 'CALLVALUE', 'SLOAD', 'CALLDATALOAD', 'CALLDATACOPY', 'CALL', 'STATICCALL'}
+    CRITICAL_SOURCES = {'CALLER', 'ORIGIN', 'CALLVALUE', 'SLOAD', 'CALLDATALOAD', 'CALLDATACOPY', 'CALL', 'STATICCALL', 'CALLPRIVATE'}
     logger.info("关键数据源：CALLER, ORIGIN, CALLVALUE, SLOAD, CALLDATALOAD, CALLDATACOPY, CALL, STATICCALL")
     source_stmts = set(df_opcode[df_opcode['opcode'].isin(CRITICAL_SOURCES)]['stmtID'])
     valid_sources = [s for s in source_stmts if s in DDG]
@@ -1061,11 +1061,17 @@ def analyze_slice_semantics_accurate_with_const(predicate_subgraph, jumpi_stmt, 
     }
 
     # ================= 核心：带常量提取的 BFS 边界追踪器 =================
+    # ================= 核心：带严格常量过滤的 BFS 边界追踪器 =================
     def trace_semantic_boundary(start_node):
         queue = [start_node]
         visited = set()
         found_semantics = set()
-        const_values_found = []  # 新增：记录找到的常量值
+
+        # 【核心修复 1】：只检查起点 (start_node) 是不是 CONST
+        # 如果起点就是 CONST (例如 EQ v1, CONST)，这才是真正的硬编码比较值！
+        direct_const_val = None
+        if opcode_dict.get(start_node) == 'CONST':
+            direct_const_val = const_value_dict.get(start_node)
 
         while queue:
             curr = queue.pop(0)
@@ -1088,28 +1094,22 @@ def analyze_slice_semantics_accurate_with_const(predicate_subgraph, jumpi_stmt, 
                 found_semantics.add(STATIC_SEMANTIC_SOURCES[op])
                 continue
 
-            # ====== 新增：常量值提取逻辑 ======
             elif op == 'CONST':
-                # 尝试从字典中获取具体的值
-                val = const_value_dict.get(curr)
-                if val is not None:
-                    const_values_found.append(str(val))
-                pass  # 注意：依然不阻断，因为可能是位掩码
-            # ==================================
+                # 【核心修复 2】：在 BFS 遍历途中遇到的 CONST (非起点)，
+                # 都是参与掩码/偏移计算的“工具常量”，直接忽略，不阻断回溯！
+                pass
 
+                # 继续向上回溯
             for pred in predicate_subgraph.predecessors(curr):
                 queue.append(pred)
 
         # 结果汇总逻辑
         if not found_semantics:
-            if const_values_found:
-                # 如果找到了具体的常量值，优先使用它！(比如 0x0)
-                # 因为可能由于位操作混杂了多个 CONST (如掩码 0xff)，我们最好选最主要的那个
-                # 在典型的比较操作中，通常离比较指令最近的或者值较短的那个是真正的目标值
-                # 为了简单清晰，我们这里将它们合并或者选取第一个
-                return f"CONST({const_values_found[0]})"
-            elif any(opcode_dict.get(n) == 'CONST' for n in visited):
-                return "Hardcoded_Constant"
+            # 如果没有找到高维语义，优先看看起点是不是真正的常量
+            if direct_const_val is not None:
+                return f"CONST({direct_const_val})"
+
+            # 如果起点不是常量，且没有高维语义 (比如上游是函数传进来的未知变量 v99c_0)
             return "Computed_Value"
 
         return " + ".join(list(found_semantics))
@@ -1299,7 +1299,12 @@ def analyze_slice_semantics_accurate(predicate_subgraph, jumpi_stmt, DDG, opcode
         else:
             return "[Unknown Boolean Check]"
 
-
+# todo
+# 增加jumpi判断块的语义（错误语义）
+# 或者说是否可以只提取那些具有错误信息返回的判断块
+# 发现了一点问题，if-else类型的分支控制流可能不携带错误信息（待确认）
+# 一个思路，把检查块的提取分为严格的（带有错误信息）和宽松的（现在的提取方式）
+# 然后取一个并集，并且使用严格块的错误信息来补充检查块语义
 def build_AC_check_blocks(df_defines, df_uses, df_opcodes, df_stmts_in_block, storage,
                           df_publicArgs, df_formalArgs, df_functionCall, df_var_values):
     logger.info("开始构建授权检查块")
@@ -1331,7 +1336,8 @@ def build_AC_check_blocks(df_defines, df_uses, df_opcodes, df_stmts_in_block, st
     # print(AUTH_BLOCKS)
     # 提取call指令所在区块视作潜在的检查块（检查逻辑存在于调用函数中的情况），考虑要不要进一步细分外部合约调用
     POTENTIAL_AUTH_BLOCKS = list(df_functionCall.iloc[:, 0])
-    # print(POTENTIAL_AUTH_BLOCKS)
+
+    print(POTENTIAL_AUTH_BLOCKS)
     return AUTH_BLOCKS, checkBlock_des_dict, POTENTIAL_AUTH_BLOCKS
 
 
