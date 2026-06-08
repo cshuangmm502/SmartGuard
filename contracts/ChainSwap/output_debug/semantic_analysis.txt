@@ -1,16 +1,19 @@
 ====================================================================================================
 func_path: ['0x0', '0x3d8', '0x705']
-suffered check blocks: ['0x18ce', '0x1e89B0x1d32B0x1a19', '0x17a7', '0x1f33B0x1d32B0x1a19', '0x17bf', '0x1963', '0x17f7', '0x18b6']
+suffered check blocks: ['0x17bf', '0x1e89B0x1d32B0x1a19', '0x1963', '0x17a7', '0x17f7', '0x18b6', '0x1f33B0x1d32B0x1a19', '0x18ce']
 
 checks_block_info:
-check block 0x18ce 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: SLOAD, STATICCALL 
-check block 0x1e89B0x1d32B0x1a19 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _token]],驱动此判断的数据源: SLOAD 
-check block 0x17a7 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _factory]],驱动此判断的数据源: SLOAD 
-check block 0x1f33B0x1d32B0x1a19 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: SLOAD, CALL 
-check block 0x17bf 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: SLOAD, STATICCALL 
-check block 0x1963 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: SLOAD, CALL, CALLVALUE 
-check block 0x17f7 业务约束逻辑: [msg.value LT Memory_Variable/Array_Length],驱动此判断的数据源: CALLVALUE 
-check block 0x18b6 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _factory]],驱动此判断的数据源: SLOAD 
+check block 0x17bf 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: STATICCALL, SLOAD, 
+check block 0x1e89B0x1d32B0x1a19 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _token]],驱动此判断的数据源: CALLPRIVATE, SLOAD,
+基于后续逻辑提取的错误处理信息：SafeERC20: call to non-contract 
+check block 0x1963 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: CALL, CALLVALUE, SLOAD, 
+check block 0x17a7 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _factory]],驱动此判断的数据源: SLOAD, 
+check block 0x17f7 业务约束逻辑: [msg.value LT Memory_Variable/Array_Length],驱动此判断的数据源: CALLVALUE,
+基于后续逻辑提取的错误处理信息：fee is too low 
+check block 0x18b6 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _factory]],驱动此判断的数据源: SLOAD, 
+check block 0x1f33B0x1d32B0x1a19 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: CALL, SLOAD,
+基于后续逻辑提取的错误处理信息：SafeERC20: low-level call failed 
+check block 0x18ce 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: STATICCALL, SLOAD, 
 
 support_check_analysis_result:
 {
@@ -19,62 +22,65 @@ support_check_analysis_result:
   "supportness_evidence": [],
   "non_support_guards": [
     {
-      "block": "0x18ce",
+      "block": "0x17bf",
       "type": "OTHER",
-      "reason": "External call success/failure check; not a supportness validation."
+      "reason": "External call success/failure check only; does not validate supported chain/resource/token/router."
     },
     {
       "block": "0x1e89B0x1d32B0x1a19",
       "type": "UNKNOWN_STORAGE",
-      "reason": "Non-zero check on storage[address _token]; token existence alone is not clearly a supported-token whitelist/mapping guard."
-    },
-    {
-      "block": "0x17a7",
-      "type": "UNKNOWN_STORAGE",
-      "reason": "Non-zero check on storage[address _factory]; factory existence alone is not evidence of router/handler support."
-    },
-    {
-      "block": "0x1f33B0x1d32B0x1a19",
-      "type": "OTHER",
-      "reason": "External call success/failure check; not a supportness validation."
-    },
-    {
-      "block": "0x17bf",
-      "type": "OTHER",
-      "reason": "External call success/failure check; not a supportness validation."
+      "reason": "Non-zero check on storage[address _token] with SafeERC20 non-contract error suggests contract existence, not a recovered token support list or whitelist."
     },
     {
       "block": "0x1963",
       "type": "OTHER",
-      "reason": "External call success/failure check with CALLVALUE; not a supportness validation."
+      "reason": "External call success/failure check only; not a supportness validation."
+    },
+    {
+      "block": "0x17a7",
+      "type": "UNKNOWN_STORAGE",
+      "reason": "Non-zero check on storage[address _factory] indicates factory address existence/configuration, not a clear router/support mapping."
     },
     {
       "block": "0x17f7",
       "type": "PAYMENT",
-      "reason": "msg.value comparison is a payment/business constraint, not supportness."
+      "reason": "msg.value threshold check with error 'fee is too low' is a payment/business constraint."
     },
     {
       "block": "0x18b6",
       "type": "UNKNOWN_STORAGE",
-      "reason": "Non-zero check on storage[address _factory]; no recovered supportness semantic such as availableRouters/handler support."
+      "reason": "Non-zero check on storage[address _factory] indicates configuration existence, not explicit supportness."
+    },
+    {
+      "block": "0x1f33B0x1d32B0x1a19",
+      "type": "OTHER",
+      "reason": "External call success/failure check with SafeERC20 failure is not a supportness guard."
+    },
+    {
+      "block": "0x18ce",
+      "type": "OTHER",
+      "reason": "External call success/failure check only; does not validate supported operation sets."
     }
   ],
-  "reason": "No guard uses a recovered supportness indicator such as chain/domain support, resourceID mappings, whitelist, token support list, router availability, or deposit record checks. Observed guards are external call result checks, msg.value constraint, and generic non-zero storage checks on _token/_factory, which are insufficient to classify as SUPPORTNESS_CHECK."
+  "reason": "No guard explicitly checks supported chain/domain/resourceID/whitelist/token list/router availability/deposit record. Observed guards are external call success checks, generic non-zero storage existence checks, and a fee constraint."
 }
 
 ====================================================================================================
 func_path: ['0x0', '0x272', '0x705']
-suffered check blocks: ['0x18ce', '0x1e89B0x1d32B0x1a19', '0x17a7', '0x1f33B0x1d32B0x1a19', '0x17bf', '0x1963', '0x17f7', '0x18b6']
+suffered check blocks: ['0x17bf', '0x1e89B0x1d32B0x1a19', '0x1963', '0x17a7', '0x17f7', '0x18b6', '0x1f33B0x1d32B0x1a19', '0x18ce']
 
 checks_block_info:
-check block 0x18ce 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: SLOAD, STATICCALL 
-check block 0x1e89B0x1d32B0x1a19 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _token]],驱动此判断的数据源: SLOAD 
-check block 0x17a7 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _factory]],驱动此判断的数据源: SLOAD 
-check block 0x1f33B0x1d32B0x1a19 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: SLOAD, CALL 
-check block 0x17bf 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: SLOAD, STATICCALL 
-check block 0x1963 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: SLOAD, CALL, CALLVALUE 
-check block 0x17f7 业务约束逻辑: [msg.value LT Memory_Variable/Array_Length],驱动此判断的数据源: CALLVALUE 
-check block 0x18b6 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _factory]],驱动此判断的数据源: SLOAD 
+check block 0x17bf 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: STATICCALL, SLOAD, 
+check block 0x1e89B0x1d32B0x1a19 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _token]],驱动此判断的数据源: CALLPRIVATE, SLOAD,
+基于后续逻辑提取的错误处理信息：SafeERC20: call to non-contract 
+check block 0x1963 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: CALL, CALLVALUE, SLOAD, 
+check block 0x17a7 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _factory]],驱动此判断的数据源: SLOAD, 
+check block 0x17f7 业务约束逻辑: [msg.value LT Memory_Variable/Array_Length],驱动此判断的数据源: CALLVALUE,
+基于后续逻辑提取的错误处理信息：fee is too low 
+check block 0x18b6 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _factory]],驱动此判断的数据源: SLOAD, 
+check block 0x1f33B0x1d32B0x1a19 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: CALL, SLOAD,
+基于后续逻辑提取的错误处理信息：SafeERC20: low-level call failed 
+check block 0x18ce 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: STATICCALL, SLOAD, 
 
 support_check_analysis_result:
 {
@@ -83,133 +89,143 @@ support_check_analysis_result:
   "supportness_evidence": [],
   "non_support_guards": [
     {
-      "block": "0x18ce",
+      "block": "0x17bf",
       "type": "OTHER",
-      "reason": "External call success/failure check only; does not validate supportness mapping or supported chain/resource/token/router."
+      "reason": "External call success/failure check only; does not validate supportness of chain/resource/token/router."
     },
     {
       "block": "0x1e89B0x1d32B0x1a19",
       "type": "UNKNOWN_STORAGE",
-      "reason": "Non-zero check on storage address _token; indicates configured token existence, but no evidence of supported token list/mapping guard."
-    },
-    {
-      "block": "0x17a7",
-      "type": "UNKNOWN_STORAGE",
-      "reason": "Non-zero check on storage address _factory; factory existence/configuration check, not clearly router/support list validation."
-    },
-    {
-      "block": "0x1f33B0x1d32B0x1a19",
-      "type": "OTHER",
-      "reason": "External call success/failure check only; not a supportness validation guard."
-    },
-    {
-      "block": "0x17bf",
-      "type": "OTHER",
-      "reason": "External call success/failure check only; not a supported chain/resource/token/router check."
+      "reason": "Non-zero check on storage[address _token]; indicates contract existence/non-contract guard, not a recovered token support list or mapping."
     },
     {
       "block": "0x1963",
       "type": "OTHER",
-      "reason": "External call success/failure check with msg.value influence; still not a supportness guard."
+      "reason": "External call success/failure check only; no supportness variable or mapping used."
+    },
+    {
+      "block": "0x17a7",
+      "type": "UNKNOWN_STORAGE",
+      "reason": "Non-zero check on storage[address _factory]; looks like dependency/config existence check, not router/support list validation."
     },
     {
       "block": "0x17f7",
       "type": "PAYMENT",
-      "reason": "msg.value bound check is a payment/business constraint, not supportness."
+      "reason": "msg.value compared against required amount/fee; payment constraint, not supportness."
     },
     {
       "block": "0x18b6",
       "type": "UNKNOWN_STORAGE",
-      "reason": "Non-zero check on storage address _factory; configuration existence check, not clearly available router/support validation."
+      "reason": "Non-zero check on storage[address _factory]; generic storage existence check without recovered supportness semantics."
+    },
+    {
+      "block": "0x1f33B0x1d32B0x1a19",
+      "type": "OTHER",
+      "reason": "SafeERC20 low-level call success check; operational failure handling, not support validation."
+    },
+    {
+      "block": "0x18ce",
+      "type": "OTHER",
+      "reason": "External staticcall success/failure check only; no chain/resource/token/router support condition."
     }
   ],
-  "reason": "None of the guards explicitly use known supportness indicators such as chain/domain IDs, resourceID mappings, whitelist, token support lists, router availability maps, or deposit/replay records. The observed guards are external call success checks, msg.value constraint, and generic non-zero checks on _token/_factory, which are insufficient to classify as SUPPORTNESS_CHECK."
+  "reason": "None of the guards explicitly validate supported chain/domain/resource/token/router/record semantics. The observed checks are external call success, generic non-zero storage existence for _token/_factory, and a fee/msg.value constraint."
 }
 
 ====================================================================================================
 🏁 扫描完成。共分析了 2 条路径。
 ====================================================================================================
 func_path: ['0x0', '0x470']
-suffered check blocks: ['0x18ce', '0x17a7', '0xe6a', '0x17f7', '0x17bf', '0x1963', '0x1f33B0x1e03B0x1cb8', '0xd45', '0x1e89B0x1e03B0x1cb8', '0xe82', '0x18b6']
+suffered check blocks: ['0xd45', '0x17bf', '0x1f33B0x1e03B0x1cb8', '0x1963', '0x18b6', '0x1e89B0x1e03B0x1cb8', '0x17f7', '0xe6a', '0xe82', '0x17a7', '0xeba', '0x18ce']
 
 checks_block_info:
-check block 0x18ce 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: SLOAD, STATICCALL 
-check block 0x17a7 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _factory]],驱动此判断的数据源: SLOAD 
-check block 0xe6a 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _factory]],驱动此判断的数据源: SLOAD 
-check block 0x17f7 业务约束逻辑: [msg.value LT Memory_Variable/Array_Length],驱动此判断的数据源: CALLVALUE 
-check block 0x17bf 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: SLOAD, STATICCALL 
-check block 0x1963 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: SLOAD, CALL, CALLVALUE 
-check block 0x1f33B0x1e03B0x1cb8 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: SLOAD, CALL 
-check block 0xd45 业务约束逻辑: [CONST(0x0) EQ Storage[mapping (uint256 => mapping (address => mapping (uint256 => uint256))) _received]],驱动此判断的数据源: SLOAD 
-check block 0x1e89B0x1e03B0x1cb8 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _token]],驱动此判断的数据源: SLOAD 
-check block 0xe82 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: SLOAD, STATICCALL 
-check block 0x18b6 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _factory]],驱动此判断的数据源: SLOAD 
+check block 0xd45 业务约束逻辑: [CONST(0x0) EQ Storage[mapping (uint256 => mapping (address => mapping (uint256 => uint256))) _received]],驱动此判断的数据源: SLOAD,
+基于后续逻辑提取的错误处理信息：withdrawn already 
+check block 0x17bf 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: STATICCALL, SLOAD, 
+check block 0x1f33B0x1e03B0x1cb8 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: CALL, SLOAD,
+基于后续逻辑提取的错误处理信息：SafeERC20: low-level call failed 
+check block 0x1963 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: CALL, CALLVALUE, SLOAD, 
+check block 0x18b6 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _factory]],驱动此判断的数据源: SLOAD, 
+check block 0x1e89B0x1e03B0x1cb8 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _token]],驱动此判断的数据源: CALLPRIVATE, SLOAD,
+基于后续逻辑提取的错误处理信息：SafeERC20: call to non-contract 
+check block 0x17f7 业务约束逻辑: [msg.value LT Memory_Variable/Array_Length],驱动此判断的数据源: CALLVALUE,
+基于后续逻辑提取的错误处理信息：fee is too low 
+check block 0xe6a 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _factory]],驱动此判断的数据源: SLOAD, 
+check block 0xe82 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: STATICCALL, SLOAD, 
+check block 0x17a7 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _factory]],驱动此判断的数据源: SLOAD, 
+check block 0xeba 基于后续逻辑提取的错误处理信息：too few signatures 
+check block 0x18ce 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: STATICCALL, SLOAD, 
 repeat_check_analysis_result:
 {
-  "semantic_repetitiveness_check": "POSSIBLE",
-  "confidence": "MEDIUM",
+  "semantic_repetitiveness_check": "YES",
+  "confidence": "HIGH",
   "repetitiveness_evidence": [
     {
       "block": "0xd45",
-      "constraint": "CONST(0x0) EQ Storage[mapping (uint256 => mapping (address => mapping (uint256 => uint256))) _received]",
+      "constraint": "_received == 0",
       "variable": "_received",
       "role": "PROCESSED_RECORD",
-      "strength": "MEDIUM"
+      "strength": "HIGH"
     }
   ],
   "non_repetitiveness_guards": [
     {
-      "block": "0x18ce",
-      "type": "BUSINESS_CONSTRAINT",
-      "reason": "external call success/failure check, not duplicate prevention"
-    },
-    {
-      "block": "0x17a7",
-      "type": "UNKNOWN_STORAGE",
-      "reason": "non-zero check on _factory address, setup/configuration guard"
-    },
-    {
-      "block": "0xe6a",
-      "type": "UNKNOWN_STORAGE",
-      "reason": "non-zero check on _factory address, setup/configuration guard"
-    },
-    {
-      "block": "0x17f7",
-      "type": "PAYMENT",
-      "reason": "msg.value bound check, payment/business constraint"
-    },
-    {
       "block": "0x17bf",
-      "type": "BUSINESS_CONSTRAINT",
-      "reason": "external call success/failure check, not duplicate prevention"
-    },
-    {
-      "block": "0x1963",
-      "type": "BUSINESS_CONSTRAINT",
+      "type": "OTHER",
       "reason": "external call success/failure check, not duplicate prevention"
     },
     {
       "block": "0x1f33B0x1e03B0x1cb8",
-      "type": "BUSINESS_CONSTRAINT",
+      "type": "OTHER",
       "reason": "external call success/failure check, not duplicate prevention"
     },
     {
-      "block": "0x1e89B0x1e03B0x1cb8",
-      "type": "UNKNOWN_STORAGE",
-      "reason": "non-zero check on _token address, setup/configuration guard"
-    },
-    {
-      "block": "0xe82",
-      "type": "BUSINESS_CONSTRAINT",
+      "block": "0x1963",
+      "type": "OTHER",
       "reason": "external call success/failure check, not duplicate prevention"
     },
     {
       "block": "0x18b6",
       "type": "UNKNOWN_STORAGE",
-      "reason": "non-zero check on _factory address, setup/configuration guard"
+      "reason": "_factory non-zero existence check, not replay/duplicate protection"
+    },
+    {
+      "block": "0x1e89B0x1e03B0x1cb8",
+      "type": "UNKNOWN_STORAGE",
+      "reason": "_token non-zero/contract existence check, not replay/duplicate protection"
+    },
+    {
+      "block": "0x17f7",
+      "type": "PAYMENT",
+      "reason": "msg.value fee lower-bound check"
+    },
+    {
+      "block": "0xe6a",
+      "type": "UNKNOWN_STORAGE",
+      "reason": "_factory non-zero existence check, not replay/duplicate protection"
+    },
+    {
+      "block": "0xe82",
+      "type": "OTHER",
+      "reason": "external call success/failure check, not duplicate prevention"
+    },
+    {
+      "block": "0x17a7",
+      "type": "UNKNOWN_STORAGE",
+      "reason": "_factory non-zero existence check, not replay/duplicate protection"
+    },
+    {
+      "block": "0xeba",
+      "type": "BUSINESS_CONSTRAINT",
+      "reason": "signature threshold check, not replay/duplicate protection"
+    },
+    {
+      "block": "0x18ce",
+      "type": "OTHER",
+      "reason": "external call success/failure check, not duplicate prevention"
     }
   ],
-  "reason": "A guard checks that _received mapping entry equals 0 before proceeding, which may indicate a duplicate/replay prevention record. However, the variable name is not a known canonical nonce/deposit/vote record, so evidence supports only POSSIBLE repetitiveness protection."
+  "reason": "Block 0xd45 contains a storage guard `_received == 0` with error `withdrawn already`, which clearly prevents repeated withdrawal/execution of the same item. This is a processed/received record style duplicate-prevention guard."
 }
 
 signature_check_analysis_result:
@@ -219,13 +235,14 @@ signature_check_analysis_result:
   "confidence": "HIGH",
   "evidence": [],
   "non_balance_guards": [
-    "External call success/failure checks",
-    "Storage[address _factory] existence/non-zero checks",
-    "msg.value LT Memory_Variable/Array_Length",
-    "CONST(0x0) EQ Storage[_received] check",
-    "Storage[address _token] existence/non-zero check"
+    "Storage _received == 0 with error 'withdrawn already' is a replay/withdraw-state check, not a balance/liquidity comparison",
+    "External call success/failure checks are not balance checks",
+    "Storage[address _factory] non-zero checks are existence/configuration checks",
+    "Storage[address _token] non-zero / non-contract check is token address validity, not balance",
+    "msg.value < memory variable with error 'fee is too low' is a fee threshold check, not sufficient balance/liquidity protection",
+    "Error 'too few signatures' is signature quorum validation, not balance-related"
   ],
-  "reason": "No dominating guard compares balance, allowance, reserve, liquidity, or token amount against an amount/threshold. The guards are factory/token existence, external call success, received-state check, and a msg.value-to-memory-length comparison, which is not a clear balance validation."
+  "reason": "No dominating guard compares balance, allowance, reserve, liquidity, or token amount against the operation amount; all listed guards are replay, call-success, existence, fee, or signature checks."
 }
 
 ====================================================================================================

@@ -1003,7 +1003,7 @@ def extract_predicate_slices(DDG, df_opcode, df_block, sload_semantics_dict, con
         # print(f"  📌 驱动此判断的数据源: {source_str}")
         # print(f"  📌 谓词复杂度: {len(slice_nodes)} 条指令")
         # print("-" * 60)
-        des = f"业务约束逻辑: {semantic_summary},"+f"驱动此判断的数据源: {source_str}"
+        des = f"业务约束逻辑: {semantic_summary},"+f"驱动此判断的数据源: {source_str},"
         checkBlock_des_dict.setdefault(block_id, des)
 
         logger.debug("提取到的守护区块")
@@ -1411,8 +1411,7 @@ def extract_business_block(df_var_values, df_defines, df_stmts_in_block, df_opco
         global_cfg,
     )
 
-    error_message_mstores.to_excel("error_message.xlsx", index=False)
-    selector_blocks.to_excel("test.xlsx", index=False)
+    return error_message_mstores
 
 
 # 经验主义归纳的结果，硬编码错误处理过程是连续的，也就是在函数签名后的第四个block中写入错误信息，暂时先这样做
@@ -1670,49 +1669,171 @@ def extract_error_message_mstores(
     return pd.DataFrame(results)
 
 
-# todo
-# 增加jumpi判断块的语义（错误语义）
-# 或者说是否可以只提取那些具有错误信息返回的判断块
+
+def merge_check_blocks(
+    BASE_CHECK_BLOCKS,
+    checkBlock_des_dict,
+    SUPPLY_CHECK_BLOCKS,
+    supplyBlock_des_dict,
+):
+    """
+    合并宽松检查块与错误驱动检查块，并将错误处理信息
+    拼接到原有的业务逻辑约束描述之后。
+
+    参数：
+        BASE_CHECK_BLOCKS:
+            宽松方法提取出的检查块集合或列表。
+
+        checkBlock_des_dict:
+            宽松方法生成的检查块描述字典。
+            例如：
+                {
+                    "0xd45": "Hardcoded_Constant EQ Storage[_received]"
+                }
+
+        ERROR_DRIVED_CHECK_BLOCKS:
+            错误驱动方法提取出的检查块集合或列表。
+
+        block_error_dict:
+            错误驱动方法恢复出的错误信息。
+            例如：
+                {
+                    "0xd45": "already processed"
+                }
+
+    返回：
+        FINAL_CHECK_BLOCKS:
+            两类检查块的并集。
+
+        merged_checkBlock_des_dict:
+            融合错误信息后的检查块描述字典。
+    """
+
+    # ---------------------------------------------------------
+    # 1. 两类检查块取并集，并尽量保留原始顺序
+    # ---------------------------------------------------------
+    FINAL_CHECK_BLOCKS = list(
+        dict.fromkeys(
+            list(BASE_CHECK_BLOCKS)
+            + list(SUPPLY_CHECK_BLOCKS)
+        )
+    )
+
+    # ---------------------------------------------------------
+    # 2. 复制原有描述，避免直接修改输入字典
+    # ---------------------------------------------------------
+    merged_checkBlock_des_dict = dict(
+        checkBlock_des_dict
+    )
+
+    # ---------------------------------------------------------
+    # 3. 将错误信息拼接至原有描述之后
+    # ---------------------------------------------------------
+    for block_id in SUPPLY_CHECK_BLOCKS:
+        error_message = supplyBlock_des_dict.get(
+            block_id
+        )
+
+        # 跳过未成功恢复的错误信息
+        if (
+            error_message is None
+            or not str(error_message).strip()
+        ):
+            continue
+
+        error_description = (
+            f"基于后续逻辑提取的错误处理信息："
+            f"{str(error_message).strip()}"
+        )
+
+        original_description = merged_checkBlock_des_dict.get(
+            block_id
+        )
+
+        # 情况 1：该 block 同时被宽松方法提取到
+        if (
+            original_description is not None
+            and str(original_description).strip()
+        ):
+            original_description = str(
+                original_description
+            ).strip()
+
+            # 避免函数被重复调用时反复追加相同内容
+            if error_description not in original_description:
+                merged_checkBlock_des_dict[
+                    block_id
+                ] = (
+                    f"{original_description}\n"
+                    f"{error_description}"
+                )
+
+        # 情况 2：该 block 仅被错误驱动方法提取到
+        else:
+            merged_checkBlock_des_dict[
+                block_id
+            ] = error_description
+
+    return (
+        FINAL_CHECK_BLOCKS,
+        merged_checkBlock_des_dict,
+    )
+
+# todo 提取call指令所在区块检查块，没有添加相关的语义描述，或者说应该对call指令区块进行特殊处理：
+# 1.对callprivate抽取函数名进行补充，并且尽量提取内部的检查块
+# 2.对call/staticcall进行精细化区分
 # 发现了一点问题，if-else类型的分支控制流可能不携带错误信息（待确认）
 # 一个思路，把检查块的提取分为严格的（带有错误信息）和宽松的（现在的提取方式）
 # 然后取一个并集，并且使用严格块的错误信息来补充检查块语义
-def build_AC_check_blocks(df_defines, df_uses, df_opcodes, df_stmts_in_block, storage,
+def build_AC_check_blocks(artifacts_path, df_defines, df_uses, df_opcodes, df_stmts_in_block, storage,
                           df_publicArgs, df_formalArgs, df_functionCall, df_var_values, global_cfg):
+
     logger.info("开始构建授权检查块")
     sload_semantics_dict = storage.set_index('stmtID')['semantic_with_type'].to_dict()
     print(sload_semantics_dict)
 
     const_value_dict = df_var_values.set_index('var')['value'].to_dict()
 
-    #
-    extract_business_block(df_var_values, df_defines, df_stmts_in_block, df_opcodes, df_uses, global_cfg)
+    df_block_with_error = extract_business_block(df_var_values, df_defines, df_stmts_in_block, df_opcodes, df_uses, global_cfg)
+    df_block_with_error.to_excel(artifacts_path / "output_debug" / "block_with_error.xlsx", index=False)
+    # 错误驱动的检查块-错误信息dict
+    ERROR_DRIVED_CHECK_BLOCKS = df_block_with_error['guard_blockID'].tolist()
+    # print(ERROR_DRIVED_CHECK_BLOCKS)
+    block_error_dict = df_block_with_error.set_index('guard_blockID')['error_message'].to_dict()
 
     # #谓词（CALL、SLOAD、CALLVALUE等）授权块（宽松的检查块）
     ddg = build_data_dependency_graph(df_defines, df_uses)
     BASE_CHECK_BLOCKS, checkBlock_des_dict = extract_predicate_slices(ddg, df_opcodes, df_stmts_in_block,
                                                                       sload_semantics_dict, const_value_dict)
-    # # 提取arg和状态交汇的检查块(严格的检查块规则)
-    df_allArgs = pd.concat([df_publicArgs, df_formalArgs], ignore_index=True)
-    TRUE_AUTH_BLOCKS_PUBLICARGS = extract_arg_state_rendezvous(ddg, df_defines, df_allArgs, df_opcodes,
-                                                               df_stmts_in_block)
-    # 提取caller和状态交汇的检查块(严格的检查块规则)
-    CALLER_STATE_AUTH_BLOCKS = extract_caller_state_rendezvous(ddg, df_opcodes, df_stmts_in_block)
-    # print(CALLER_STATE_AUTH_BLOCKS)
 
-    # 提取msg.value和状态交汇的检查块(严格的检查块规则)
-    CALLVALUE_STATE_AUTH_BLOCKS = extract_value_state_rendezvous(ddg, df_opcodes, df_stmts_in_block)
-    # print(CALLVALUE_STATE_AUTH_BLOCKS)
-    # 调试用手动注入检查块
-    # Manual_check_block = ['0x31eaB0x2327B0x253dB0xe96']
-    Manual_check_block = []
-    AUTH_BLOCKS = list(TRUE_AUTH_BLOCKS_PUBLICARGS) + list(CALLER_STATE_AUTH_BLOCKS) + list(
-        CALLVALUE_STATE_AUTH_BLOCKS) + Manual_check_block + list(BASE_CHECK_BLOCKS)
-    # print(AUTH_BLOCKS)
+    # print(checkBlock_des_dict)
+
+    # 使用错误驱动检查块补充宽松检查块的错误信息
+    final_check_blocks, final_checkBlock_des_dict = merge_check_blocks(BASE_CHECK_BLOCKS, checkBlock_des_dict,
+                                                                       ERROR_DRIVED_CHECK_BLOCKS, block_error_dict)
+
+    # # 提取arg和状态交汇的检查块(严格的检查块规则)
+    # df_allArgs = pd.concat([df_publicArgs, df_formalArgs], ignore_index=True)
+    # TRUE_AUTH_BLOCKS_PUBLICARGS = extract_arg_state_rendezvous(ddg, df_defines, df_allArgs, df_opcodes,
+    #                                                            df_stmts_in_block)
+    # # 提取caller和状态交汇的检查块(严格的检查块规则)
+    # CALLER_STATE_AUTH_BLOCKS = extract_caller_state_rendezvous(ddg, df_opcodes, df_stmts_in_block)
+    # # print(CALLER_STATE_AUTH_BLOCKS)
+    #
+    # # 提取msg.value和状态交汇的检查块(严格的检查块规则)
+    # CALLVALUE_STATE_AUTH_BLOCKS = extract_value_state_rendezvous(ddg, df_opcodes, df_stmts_in_block)
+    # # print(CALLVALUE_STATE_AUTH_BLOCKS)
+    # # 调试用手动注入检查块
+    # # Manual_check_block = ['0x31eaB0x2327B0x253dB0xe96']
+    # Manual_check_block = []
+    # AUTH_BLOCKS = list(TRUE_AUTH_BLOCKS_PUBLICARGS) + list(CALLER_STATE_AUTH_BLOCKS) + list(
+    #     CALLVALUE_STATE_AUTH_BLOCKS) + Manual_check_block + list(final_check_blocks)
+
     # 提取call指令所在区块视作潜在的检查块（检查逻辑存在于调用函数中的情况），考虑要不要进一步细分外部合约调用
     POTENTIAL_AUTH_BLOCKS = list(df_functionCall.iloc[:, 0])
 
-    print(POTENTIAL_AUTH_BLOCKS)
-    return AUTH_BLOCKS, checkBlock_des_dict, POTENTIAL_AUTH_BLOCKS
+    # print(POTENTIAL_AUTH_BLOCKS)
+    return final_check_blocks, final_checkBlock_des_dict, POTENTIAL_AUTH_BLOCKS
 
 
 

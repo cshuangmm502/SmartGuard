@@ -428,30 +428,43 @@ def call_llm_api_signature_check(guard_blocks, guard_info):
                             You are a smart contract static-analysis agent.
 
                             Task:
-                            Given guard blocks extracted from dominator-tree analysis of a TAC path, decide whether the path is protected by a BALANCE_CHECK.
-
-                            BALANCE_CHECK means a dominating guard validates whether a deposit, lock, burn, or transfer-out operation has sufficient assets or liquidity, including:
-                            - user balance compared with deposit amount
-                            - allowance compared with transfer amount
-                            - bridge balance after deposit compared with balance before deposit
-                            - bridge liquidity or reserve compared with amount or threshold
-                            - min/max token amount constraints
-
-                            Known balance knowledge (from SmartAxe):
-                            balance, allowance, deposit, balanceOf, depositETH, redeem, vaultAllowance,
-                            minStakedTokens, minAmounts, depositCounts, unlockedBalanceOf, lockedBalanceOf,
-                            minTokenAmount, maxTokenAmount, released, allowed, totalSupply, bridgeSend,
-                            transferOut, minterAllowance, eTHReserve, tokenBalance, swapStorage.
-
+                            Given guard blocks extracted from dominator-tree analysis of a destination-side TAC path, decide whether the path is protected by a SIGNATURE_CHECK.
+                            
+                            SIGNATURE_CHECK means a guarding condition or verification operation validates the authenticity of a cross-chain authorization before withdrawal, unlock, mint, release, claim, or message execution, including:
+                            - cryptographic signature verification
+                            - recovered signer validation
+                            - signer, validator, or relayer authorization
+                            - multisignature or relayer threshold validation
+                            - signature or authorization expiry validation
+                            - binding the signed message to withdrawal parameters
+                            
+                            Known SmartAxe signature knowledge:
+                            contractAddressToDepositFunctionSignature, kappaExists, nonces,
+                            contractAddressToExecuteFunctionSignature, expiry, gsnTrustedSigner,
+                            resourceIDToHandlerAddress, totalProposals, cancelProposal, signer, relayer.
+                            
+                            Roles:
+                            - CRYPTO_VERIFY: ecrecover, recover, verifySignature, isValidSignature, signature verification, cryptographic proof verification
+                            - SIGNER_AUTHORIZATION: signer, relayer, validator, gsnTrustedSigner, isSigner, isRelayer, authorizedSigner
+                            - THRESHOLD_CHECK: threshold, relayerThreshold, signatureCount, validSignatures, requiredSignatures, quorum
+                            - EXPIRY_CHECK: expiry, deadline, validUntil, timestamp bound
+                            - MESSAGE_BINDING: signed hash, digest, message hash, withdrawal hash, nonce bound to signed message
+                            - GENERIC_AUTH_STATE: kappaExists or protocol-specific authorization state
+                            - NON_SIGNATURE: routing mappings, function-selector mappings, proposal lifecycle variables, replay records, admin variables
+                            
                             Decision rules:
-                            1. A semantic BALANCE_CHECK requires a dominating comparison guard.
-                            2. Variable occurrence alone is only a knowledge-base match.
-                            3. Generic balance, deposit, fee, totalSupply, or transferOut occurrence without 
-                            comparison does not prove BALANCE_CHECK.
-                            4. msg.value != 0 alone is only POSSIBLE.
-                            5. CALLER checks are authorization, not BALANCE_CHECK.
-                            6. Unknown stor_x comparisons are POSSIBLE conservatively.
-                            7. Output yes when the comparison clearly resembles amount, balance, reserve, or liquidity validation.
+                            1. A semantic SIGNATURE_CHECK requires a guarding condition or a clear cryptographic verification operation. Variable occurrence alone is insufficient.
+                            2. If the path contains ecrecover, recover, verifySignature, isValidSignature, or an equivalent cryptographic verification operation, treat it as strong CRYPTO_VERIFY evidence.
+                            3. If a guard validates signer, relayer, validator, or gsnTrustedSigner membership, treat it as SIGNER_AUTHORIZATION evidence.
+                            4. If a guard compares valid signature count, relayer count, or proposal approval count against a threshold, treat it as THRESHOLD_CHECK evidence.
+                            5. expiry or deadline checks are supporting evidence but do not prove signature verification by themselves.
+                            6. nonces are supporting MESSAGE_BINDING or replay-prevention evidence. Nonces alone do not prove SIGNATURE_CHECK.
+                            7. kappaExists is weak protocol-specific evidence unless the guard clearly indicates authorization validation.
+                            8. contractAddressToDepositFunctionSignature and contractAddressToExecuteFunctionSignature are function-selector or dispatch mappings, not cryptographic signature checks by themselves.
+                            9. resourceIDToHandlerAddress is a routing/supportness mapping, not signature verification.
+                            10. totalProposals and cancelProposal are proposal lifecycle variables, not signature verification by themselves.
+                            11. CALLER/msg.sender equality checks are ordinary caller authorization unless linked to signer, validator, or relayer semantics.
+                            12. If evidence is insufficient, output NO or POSSIBLE conservatively.
 
                             Output JSON only.
                             """
@@ -464,16 +477,32 @@ def call_llm_api_signature_check(guard_blocks, guard_info):
 
                             Guard block details:
                             {guard_info}
-
-                            Return exactly:
+                            
+                            123
                             {{
-                              "knowledge_base_match": "YES|NO",
-                              "semantic_balance_check": "YES|POSSIBLE|NO",
-                              "confidence": "HIGH|MEDIUM|LOW",
-                              "evidence": [],
-                              "non_balance_guards": [],
-                              "reason": "short reason"
+                            "knowledge_base_match": "YES|NO",
+                            "semantic_signature_check": "YES|POSSIBLE|NO",
+                            "is_path_relevant": true,
+                            "confidence": "HIGH|MEDIUM|LOW",
+                            "signature_evidence": [
+                            {{
+                            "block": "block id or operation id",
+                            "constraint": "short constraint or operation",
+                            "variable": "variable, call, or operation name",
+                            "role": "CRYPTO_VERIFY|SIGNER_AUTHORIZATION|THRESHOLD_CHECK|EXPIRY_CHECK|MESSAGE_BINDING|GENERIC_AUTH_STATE",
+                            "strength": "HIGH|MEDIUM|LOW"
                             }}
+                            ],
+                            "non_signature_guards": [
+                            {{
+                            "block": "block id",
+                            "type": "ROUTING|REPLAY_RECORD|PROPOSAL_LIFECYCLE|CALLER_AUTHORIZATION|ADMIN|UNKNOWN_STORAGE|OTHER",
+                            "reason": "short reason"
+                            }}
+                            ],
+                            "reason": "short reason"
+                            }}
+
                             """
             }
         ]
