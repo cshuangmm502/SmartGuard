@@ -2,6 +2,8 @@
 # by Hauturier
 
 from pathlib import Path
+
+import networkx as nx
 import pandas as pd
 
 from ISV_analysis import ISV_analysis
@@ -118,13 +120,14 @@ def vulnerability_analysis(artifacts_path, contract_name):
                                                                      df_functionReturn, df_publicFunction, events)
     # output_Graph_to_file(global_cfg, 'global_cfg', artifacts_path)
     # emitting_events.to_excel(out_dir / "emitting_events.xlsx", index=False)
-    fcg, emitting_functions, informing_functions = build_fcg(artifacts_path, df_functionCall, df_block_in_func,
-                                                             emitting_events, informing_events)
-
+    # fcg, emitting_functions, informing_functions = build_fcg(artifacts_path, df_functionCall, df_block_in_func,
+    #                                                          emitting_events, informing_events)
+    #
     AUTH_BLOCKS, authBlock_des_dict, POTENTIAL_AUTH_BLOCKS = build_AC_check_blocks(df_defines, df_uses,
                                                                                    df_opcodes, df_stmts_in_block,
                                                                                    storage, df_publicArgs,
-                                                                                   df_formalArgs, df_functionCall, df_var_values)
+                                                                                   df_formalArgs, df_functionCall,
+                                                                                   df_var_values, global_cfg)
     # ACV_analysis(artifacts_path, df_functionCall, df_block_in_func, emitting_functions, informing_functions, fcg,
     #              global_cfg, df_functionReturn, AUTH_BLOCKS, POTENTIAL_AUTH_BLOCKS, authBlock_des_dict)
     #
@@ -141,10 +144,11 @@ if __name__ == "__main__":
     # CONTRACT_NAME = "0x0aBCFbfA8e3Fda8B7FBA18721Caf7d5cf55cF5f5"
     CONTRACT_ARTIFACTS_PATH = CONTRACTS_PATH / CONTRACT_NAME
     setup_logging(CONTRACT_ARTIFACTS_PATH)
-    logger.info("SmartGuard 启动")
-    try:
-        vulnerability_analysis(CONTRACT_ARTIFACTS_PATH, CONTRACT_NAME)
-    except Exception:
-        logger.exception("SmartGuard 执行失败")
+    vulnerability_analysis(CONTRACT_ARTIFACTS_PATH, CONTRACT_NAME)
+    # logger.info("SmartGuard 启动")
+    # try:
+    #     vulnerability_analysis(CONTRACT_ARTIFACTS_PATH, CONTRACT_NAME)
+    # except Exception:
+    #     logger.exception("SmartGuard 执行失败")
     # vulnerability_analysis(CONTRACT_ARTIFACTS_PATH, CONTRACT_NAME)
     # readFile(CONTRACT_ARTIFACTS_PATH)

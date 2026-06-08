@@ -1,4 +1,6 @@
 from pathlib import Path
+from typing import Optional
+
 import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -159,14 +161,43 @@ def check_storage_type_by_tacVar(path,variable):
     return type_tag
 
 
+def decode_hex_string(hex_value):
+    """
+    将 MSTORE 写入的 32 字节十六进制常量解码为字符串片段。
+
+    例如：
+        0x616c72656164792070726f636573736564000000000000000000000000000000
+        -> "already processed"
+    """
+
+    if not isinstance(hex_value, str):
+        return None
+
+    hex_value = hex_value.strip()
+
+    if not hex_value.startswith("0x"):
+        return None
+
+    hex_data = hex_value[2:]
+
+    # 保证十六进制字符串长度为偶数
+    if len(hex_data) % 2 != 0:
+        hex_data = "0" + hex_data
+
+    try:
+        raw_bytes = bytes.fromhex(hex_data)
+
+        # Solidity 写入字符串时，通常使用 0x00 在末尾补齐 32 字节
+        raw_bytes = raw_bytes.rstrip(b"\x00")
+
+        return raw_bytes.decode("utf-8")
+
+    except (ValueError, UnicodeDecodeError):
+        return None
+
 
 if __name__ == "__main__":
-    # [b, graph_index] = generate_ListandGraph(CONTRACT_ARTIFACTS_PATH)
-    # find_SVD(CONTRACT_ARTIFACTS_PATH,b)
-    # track_sload(CONTRACT_ARTIFACTS_PATH)
-    value = convert_tacVar_to_value(CONTRACT_ARTIFACTS_PATH,'0x769')
-    print(value)
-    # convert_tacNormalVar_to_solVar(CONTRACT_ARTIFACTS_PATH,'')
-    # tag = check_storage_type_by_tacVar(CONTRACT_ARTIFACTS_PATH, '0x5a7')
-    # print(tag)
+    hex = "0x4f6e6c792063616c6c656420627920466163746f727900000000000000000000"
+    text = decode_hex_string(hex)
+    print(text)
 

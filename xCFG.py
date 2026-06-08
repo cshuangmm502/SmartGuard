@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import logging
 from event_analysis import analyze_events, convert_events_to_func
 from tac_analysis import extract_all_events
-from tac_analyze_scripts.help_function import output_Graph_to_file
+from tac_analyze_scripts.help_function import output_Graph_to_file, decode_hex_string
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 OUT_DIR = PROJECT_ROOT / "contracts/ChainSwap/TokenMapped/out"
@@ -1299,6 +1299,377 @@ def analyze_slice_semantics_accurate(predicate_subgraph, jumpi_stmt, DDG, opcode
         else:
             return "[Unknown Boolean Check]"
 
+
+def extract_business_block(df_var_values, df_defines, df_stmts_in_block, df_opcodes, df_uses, global_cfg):
+    error_selector = (
+        "0x8c379a000000000000000000000000000000000000000000000000000000000"
+    )
+
+    # 1. 找到 selector 对应变量
+    selector_vars = df_var_values[
+        df_var_values["value"] == error_selector
+        ][["var"]].copy()
+
+    selector_vars = selector_vars.rename(
+        columns={
+            "var": "selector_var",
+        }
+    )
+
+    # 2. 找到定义 selector 变量的 stmtID
+    selector_stmts = selector_vars.merge(
+        df_defines[["stmtID", "var"]],
+        left_on="selector_var",
+        right_on="var",
+        how="inner",
+    )
+
+    selector_stmts = selector_stmts.rename(
+        columns={
+            "stmtID": "selector_stmtID",
+        }
+    )
+
+    selector_stmts = selector_stmts[
+        [
+            "selector_var",
+            "selector_stmtID",
+        ]
+    ]
+
+    # 3. 找到 selector stmtID 所在的 blockID
+    selector_blocks = selector_stmts.merge(
+        df_stmts_in_block[["stmtID", "blockID"]],
+        left_on="selector_stmtID",
+        right_on="stmtID",
+        how="inner",
+    )
+
+    # merge 后 stmtID 与 selector_stmtID 含义相同，删除重复列
+    selector_blocks = selector_blocks.drop(
+        columns=["stmtID"]
+    )
+
+    selector_blocks = selector_blocks.rename(
+        columns={
+            "blockID": "selector_blockID",
+        }
+    )
+
+    selector_blocks.drop_duplicates().reset_index(drop=True)
+
+    # 4. 通过全局控制流图查找 selector block 的前驱 block
+    selector_blocks["guard_blockID"] = selector_blocks[
+        "selector_blockID"
+    ].apply(
+        lambda block_id: (
+            list(global_cfg.predecessors(block_id))
+            if block_id in global_cfg
+            else []
+        )
+    )
+
+    # 一个 selector block 可能存在多个前驱 block
+    # 使用 explode() 将每个前驱节点展开为独立记录
+    selector_blocks = selector_blocks.explode(
+        "guard_blockID"
+    )
+
+    # 5，6步作为debug，经验上错误处理函数的构建块的前序块一定是JUMPI
+    # ---------------------------------------------------------
+    # 5. 找到包含 JUMPI 的 blockID
+    # ---------------------------------------------------------
+    jumpi_blocks = df_stmts_in_block[
+        ["stmtID", "blockID"]
+    ].merge(
+        df_opcodes[["stmtID", "opcode"]],
+        on="stmtID",
+        how="inner",
+    )
+
+    jumpi_blocks = set(
+        jumpi_blocks[
+            jumpi_blocks["opcode"] == "JUMPI"
+            ]["blockID"]
+    )
+
+    # ---------------------------------------------------------
+    # 6. 验证候选 guard block 是否包含 JUMPI
+    # ---------------------------------------------------------
+    selector_blocks["guard_has_jumpi"] = selector_blocks[
+        "guard_blockID"
+    ].apply(
+        lambda block_id: block_id in jumpi_blocks
+    )
+
+    error_message_mstores = extract_error_message_mstores(
+        selector_blocks,
+        df_var_values,
+        df_uses,
+        df_stmts_in_block,
+        df_opcodes,
+        global_cfg,
+    )
+
+    error_message_mstores.to_excel("error_message.xlsx", index=False)
+    selector_blocks.to_excel("test.xlsx", index=False)
+
+
+# 经验主义归纳的结果，硬编码错误处理过程是连续的，也就是在函数签名后的第四个block中写入错误信息，暂时先这样做
+# 目前发现有极少部分由于编译器的内联优化，把错误信息提到了函数开头
+def extract_error_message_mstores(
+        selector_blocks,
+        df_var_values,
+        df_uses,
+        df_stmts_in_block,
+        df_opcodes,
+        global_cfg,
+):
+    """
+    从 selector_blockID 出发，沿全局 CFG 向后遍历四个 block，
+    找到写入错误信息的 block，并提取其中 MSTORE 写入的字符串内容。
+
+    参数：
+        selector_blocks:
+            extract_error_selector_blocks() 的输出结果。
+            至少包含：
+                selector_var
+                selector_stmtID
+                selector_blockID
+                guard_blockID
+                guard_has_jumpi
+
+        df_var_values:
+            TAC_Variable_Value.csv 对应的 DataFrame。
+            需要包含：
+                var
+                value
+
+        df_uses:
+            TAC_Use.csv 对应的 DataFrame。
+            需要包含：
+                stmtID
+                var
+                index
+
+        df_stmts_in_block:
+            TAC_Block.csv 对应的 DataFrame。
+            需要包含：
+                stmtID
+                blockID
+
+        df_opcodes:
+            TAC_Op.csv 对应的 DataFrame。
+            需要包含：
+                stmtID
+                opcode
+
+        global_cfg:
+            全局控制流图。
+
+    返回：
+        DataFrame，每一行对应一个 selector block。
+    """
+
+    results = []
+
+    for _, selector_row in selector_blocks.iterrows():
+        current_block = selector_row["selector_blockID"]
+        forward_path = []
+
+        path_status = "found"
+
+        # -----------------------------------------------------
+        # 1. 从 selector_blockID 沿 CFG 向后遍历四个 block
+        # -----------------------------------------------------
+        for _ in range(4):
+            if current_block not in global_cfg:
+                path_status = "block_not_in_cfg"
+                break
+
+            successors = list(
+                global_cfg.successors(current_block)
+            )
+
+            if len(successors) == 0:
+                path_status = "no_successor"
+                break
+
+            if len(successors) > 1:
+                path_status = "multiple_successors"
+                break
+
+            current_block = successors[0]
+            forward_path.append(current_block)
+
+        result = selector_row.to_dict()
+
+        result["forward_path"] = forward_path
+
+        # 无法走到第四个 block 时，保留记录用于调试
+        if path_status != "found":
+            result.update(
+                {
+                    "error_message_blockID": None,
+                    "mstore_stmtIDs": [],
+                    "mstore_details": [],
+                    "error_message": None,
+                    "error_message_status": path_status,
+                }
+            )
+
+            results.append(result)
+            continue
+
+        # selector block 后的第四个 block
+        error_message_block = current_block
+
+        # -----------------------------------------------------
+        # 2. 找到第四个 block 中的所有语句
+        # -----------------------------------------------------
+        block_stmts = df_stmts_in_block[
+            df_stmts_in_block["blockID"].astype(str)
+            == str(error_message_block)
+        ][["stmtID"]].copy()
+
+        # 保留 block 内语句原始顺序
+        block_stmts["stmt_order"] = range(
+            len(block_stmts)
+        )
+
+        # -----------------------------------------------------
+        # 3. 提取其中所有 MSTORE 语句
+        # -----------------------------------------------------
+        mstore_rows = block_stmts.merge(
+            df_opcodes[["stmtID", "opcode"]],
+            on="stmtID",
+            how="inner",
+        )
+
+        mstore_rows = mstore_rows[
+            mstore_rows["opcode"].astype(str).str.upper()
+            == "MSTORE"
+        ].sort_values(
+            "stmt_order"
+        )
+
+        if mstore_rows.empty:
+            result.update(
+                {
+                    "error_message_blockID": error_message_block,
+                    "mstore_stmtIDs": [],
+                    "mstore_details": [],
+                    "error_message": None,
+                    "error_message_status": "mstore_not_found",
+                }
+            )
+
+            results.append(result)
+            continue
+
+        # -----------------------------------------------------
+        # 4. 提取每条 MSTORE 的第二个操作数
+        # -----------------------------------------------------
+        mstore_details = []
+        message_chunks = []
+
+        for _, mstore_row in mstore_rows.iterrows():
+            mstore_stmt_id = mstore_row["stmtID"]
+
+            # 查询 MSTORE 使用的变量，并按照参数位置排序
+            mstore_uses = df_uses[
+                df_uses["stmtID"].astype(str)
+                == str(mstore_stmt_id)
+            ].copy()
+
+            mstore_uses = mstore_uses.sort_values(
+                "index"
+            )
+
+            # MSTORE 应当至少包含两个操作数：
+            #   第一个：内存偏移量
+            #   第二个：写入内容
+            if len(mstore_uses) < 2:
+                mstore_details.append(
+                    {
+                        "mstore_stmtID": mstore_stmt_id,
+                        "value_var": None,
+                        "value": None,
+                        "decoded_chunk": None,
+                        "status": "missing_operand",
+                    }
+                )
+
+                continue
+
+            value_var = mstore_uses.iloc[1]["var"]
+
+            # -------------------------------------------------
+            # 5. 通过 df_var_values 恢复第二个操作数的常量值
+            # -------------------------------------------------
+            value_rows = df_var_values[
+                df_var_values["var"].astype(str)
+                == str(value_var)
+            ]
+
+            if value_rows.empty:
+                value = None
+            else:
+                value = value_rows.iloc[0]["value"]
+
+            decoded_chunk = decode_hex_string(
+                value
+            )
+
+            if decoded_chunk is not None:
+                message_chunks.append(
+                    decoded_chunk
+                )
+
+            mstore_details.append(
+                {
+                    "mstore_stmtID": mstore_stmt_id,
+                    "value_var": value_var,
+                    "value": value,
+                    "decoded_chunk": decoded_chunk,
+                    "status": (
+                        "decoded"
+                        if decoded_chunk is not None
+                        else "not_string_constant"
+                    ),
+                }
+            )
+
+        # -----------------------------------------------------
+        # 6. 拼接同一 block 中的字符串片段
+        # -----------------------------------------------------
+        error_message = (
+            "".join(message_chunks)
+            if message_chunks
+            else None
+        )
+
+        result.update(
+            {
+                "error_message_blockID": error_message_block,
+                "mstore_stmtIDs": mstore_rows[
+                    "stmtID"
+                ].tolist(),
+                "mstore_details": mstore_details,
+                "error_message": error_message,
+                "error_message_status": (
+                    "decoded"
+                    if error_message is not None
+                    else "string_not_decoded"
+                ),
+            }
+        )
+
+        results.append(result)
+
+    return pd.DataFrame(results)
+
+
 # todo
 # 增加jumpi判断块的语义（错误语义）
 # 或者说是否可以只提取那些具有错误信息返回的判断块
@@ -1306,12 +1677,15 @@ def analyze_slice_semantics_accurate(predicate_subgraph, jumpi_stmt, DDG, opcode
 # 一个思路，把检查块的提取分为严格的（带有错误信息）和宽松的（现在的提取方式）
 # 然后取一个并集，并且使用严格块的错误信息来补充检查块语义
 def build_AC_check_blocks(df_defines, df_uses, df_opcodes, df_stmts_in_block, storage,
-                          df_publicArgs, df_formalArgs, df_functionCall, df_var_values):
+                          df_publicArgs, df_formalArgs, df_functionCall, df_var_values, global_cfg):
     logger.info("开始构建授权检查块")
     sload_semantics_dict = storage.set_index('stmtID')['semantic_with_type'].to_dict()
     print(sload_semantics_dict)
 
     const_value_dict = df_var_values.set_index('var')['value'].to_dict()
+
+    #
+    extract_business_block(df_var_values, df_defines, df_stmts_in_block, df_opcodes, df_uses, global_cfg)
 
     # #谓词（CALL、SLOAD、CALLVALUE等）授权块（宽松的检查块）
     ddg = build_data_dependency_graph(df_defines, df_uses)
