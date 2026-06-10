@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import logging
 from event_analysis import analyze_events, convert_events_to_func
 from tac_analysis import extract_all_events
-from tac_analyze_scripts.help_function import output_Graph_to_file, decode_hex_string
+from tac_analyze_scripts.help_function import output_Graph_to_file, decode_hex_string, decode_hex_string_update
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 OUT_DIR = PROJECT_ROOT / "contracts/ChainSwap/TokenMapped/out"
@@ -15,6 +15,7 @@ CONTRACT_NAME = "TokenMapped"
 CONTRACT_ARTIFACTS_PATH = OUT_DIR.parent
 
 logger = logging.getLogger(__name__)
+
 
 def build_global_cfg(artifacts_path, df_blockEdge, df_functionCall, df_functionReturn, df_publicFuncs, events):
     logger.info("开始构建全局控制流图")
@@ -686,7 +687,8 @@ def extract_arg_state_rendezvous(DDG, df_def, df_pub_args, df_opcode, df_block):
         # print("-" * 70)
         logger.debug("提取到的守护区块")
         logger.debug("🎯 安全校验 (参数 vs 状态) #%s:", found_count)
-        logger.debug("📌 业务逻辑: 正在将: %s 与 %s 进行比较！", ', '.join(arg_descriptions), ', '.join(sload_descriptions))
+        logger.debug("📌 业务逻辑: 正在将: %s 与 %s 进行比较！", ', '.join(arg_descriptions),
+                     ', '.join(sload_descriptions))
         logger.debug("⚔️ 交汇指令: [%s](%s)", comp_op, comp_stmt)
         logger.debug("🛡️ 守护区块: 跳转判断 %s", ', '.join(jumpi_descriptions))
         logger.debug("-" * 70)
@@ -920,11 +922,11 @@ def extract_value_state_rendezvous(DDG, df_opcode, df_block):
         logger.debug("🛡️ 守护区块: 跳转判断 %s", ', '.join(jumpi_descriptions))
         logger.debug("-" * 70)
 
-
     # print(f"\n[+] 提取完毕！共发现 {found_count} 个约束点。")
 
     logger.info("[+] (SLOAD / CALL / MLOAD) 与 msg.value 数据流交汇分析完毕！共发现 %s 个约束点。", found_count)
     return true_auth_blocks
+
 
 # 宽松的检查块提取方法
 def extract_predicate_slices(DDG, df_opcode, df_block, sload_semantics_dict, const_value_dict):
@@ -938,7 +940,8 @@ def extract_predicate_slices(DDG, df_opcode, df_block, sload_semantics_dict, con
     checkBlock_des_dict = dict()
     # diagnose_jumpi(DDG, opcode_dict, '0xec1')
     # 1. 定义我们关心的所有关键数据源
-    CRITICAL_SOURCES = {'CALLER', 'ORIGIN', 'CALLVALUE', 'SLOAD', 'CALLDATALOAD', 'CALLDATACOPY', 'CALL', 'STATICCALL', 'CALLPRIVATE'}
+    CRITICAL_SOURCES = {'CALLER', 'ORIGIN', 'CALLVALUE', 'SLOAD', 'CALLDATALOAD', 'CALLDATACOPY', 'CALL', 'STATICCALL',
+                        'CALLPRIVATE'}
     logger.info("关键数据源：CALLER, ORIGIN, CALLVALUE, SLOAD, CALLDATALOAD, CALLDATACOPY, CALL, STATICCALL")
     source_stmts = set(df_opcode[df_opcode['opcode'].isin(CRITICAL_SOURCES)]['stmtID'])
     valid_sources = [s for s in source_stmts if s in DDG]
@@ -985,8 +988,8 @@ def extract_predicate_slices(DDG, df_opcode, df_block, sload_semantics_dict, con
         # semantic_summary = analyze_slice_semantics(predicate_subgraph, jumpi, DDG, opcode_dict)
         # semantic_summary = analyze_slice_semantics_accurate(predicate_subgraph, jumpi, DDG, opcode_dict, sload_semantics_dict)
         semantic_summary = analyze_slice_semantics_accurate_with_const(predicate_subgraph, jumpi, DDG, opcode_dict,
-                                                            sload_semantics_dict, const_value_dict)
-            # 记录切片信息
+                                                                       sload_semantics_dict, const_value_dict)
+        # 记录切片信息
         block_id = df_block_dict.get(jumpi)
         extracted_predicates.append({
             'jumpi_stmt': jumpi,
@@ -1003,7 +1006,7 @@ def extract_predicate_slices(DDG, df_opcode, df_block, sload_semantics_dict, con
         # print(f"  📌 驱动此判断的数据源: {source_str}")
         # print(f"  📌 谓词复杂度: {len(slice_nodes)} 条指令")
         # print("-" * 60)
-        des = f"业务约束逻辑: {semantic_summary},"+f"驱动此判断的数据源: {source_str},"
+        des = f"业务约束逻辑: {semantic_summary}," + f"驱动此判断的数据源: {source_str},"
         checkBlock_des_dict.setdefault(block_id, des)
 
         logger.debug("提取到的守护区块")
@@ -1019,6 +1022,7 @@ def extract_predicate_slices(DDG, df_opcode, df_block, sload_semantics_dict, con
     # print(f"\n[+] 切片提取完毕！共输出 {len(auth_blocks)} 个宽松但有效的守护区块 (AUTH_BLOCKS)。")
     logger.info("[+] 切片提取完毕！共输出 %s 个宽松但有效的守护区块 (AUTH_BLOCKS)。", len(auth_blocks))
     return auth_blocks, checkBlock_des_dict
+
 
 def diagnose_jumpi(DDG, opcode_dict, target_jumpi_stmt):
     print(f"\n[诊断] 正在分析目标 JUMPI: {target_jumpi_stmt}")
@@ -1173,6 +1177,7 @@ def analyze_slice_semantics_accurate_with_const(predicate_subgraph, jumpi_stmt, 
         else:
             return "[Unknown Boolean Check]"
 
+
 def analyze_slice_semantics_accurate(predicate_subgraph, jumpi_stmt, DDG, opcode_dict, sload_semantics_dict):
     """
     基于“语义边界阻断”的终极解析器。
@@ -1300,7 +1305,8 @@ def analyze_slice_semantics_accurate(predicate_subgraph, jumpi_stmt, DDG, opcode
             return "[Unknown Boolean Check]"
 
 
-def extract_business_block(df_var_values, df_defines, df_stmts_in_block, df_opcodes, df_uses, global_cfg):
+def extract_business_block(artifacts_path, df_var_values, df_defines, df_stmts_in_block, df_opcodes, df_uses,
+                           global_cfg):
     error_selector = (
         "0x8c379a000000000000000000000000000000000000000000000000000000000"
     )
@@ -1402,16 +1408,509 @@ def extract_business_block(df_var_values, df_defines, df_stmts_in_block, df_opco
         lambda block_id: block_id in jumpi_blocks
     )
 
-    error_message_mstores = extract_error_message_mstores(
+    error_message_mstores = extract_error_message_mstores_update(
         selector_blocks,
         df_var_values,
         df_uses,
         df_stmts_in_block,
         df_opcodes,
+        artifacts_path,
         global_cfg,
     )
 
     return error_message_mstores
+
+
+def decode_codecopy_string(
+        deployed_bytecode,
+        code_offset_value,
+        size_value,
+):
+    """
+    从 deployed bytecode 中提取 CODECOPY 拷贝的字符串内容。
+
+    CODECOPY(memory_offset, code_offset, size)
+    """
+
+    if (
+            deployed_bytecode is None
+            or code_offset_value is None
+            or size_value is None
+    ):
+        return None
+
+    try:
+        code_offset = int(
+            str(code_offset_value),
+            16,
+        )
+
+        size = int(
+            str(size_value),
+            16,
+        )
+
+        bytecode_hex = str(
+            deployed_bytecode
+        ).strip()
+
+        if bytecode_hex.startswith("0x"):
+            bytecode_hex = bytecode_hex[2:]
+
+        bytecode = bytes.fromhex(
+            bytecode_hex
+        )
+
+        raw_bytes = bytecode[
+                    code_offset: code_offset + size
+                    ]
+
+        if len(raw_bytes) != size:
+            return None
+
+        return raw_bytes.decode(
+            "utf-8"
+        )
+
+    except (
+            ValueError,
+            UnicodeDecodeError,
+    ):
+        return None
+
+
+# 错误信息写入的方法有三种，一种是当前函数处理的直接MSTORE 常量，第二种是使用CODECOPY拷贝字节码中的静态数据，第三种是使用PHI循环内存拷贝（动态字符串）
+# 目前只实现了第一种
+def extract_error_message_mstores_update(
+        selector_blocks,
+        df_var_values,
+        df_uses,
+        df_stmts_in_block,
+        df_opcodes,
+        artifacts_path,
+        global_cfg,
+        max_depth=20,
+):
+    """
+    从 Error(string) selector block 出发，沿全局 CFG 正向遍历，
+    找到通向 REVERT 的局部错误处理路径，并恢复路径中 MSTORE
+    写入的错误字符串。
+
+    参数：
+        selector_blocks:
+            extract_error_selector_blocks() 的输出。
+            至少包含：
+                selector_blockID
+                guard_blockID
+
+        df_var_values:
+            TAC_Variable_Value.csv 读取后的 DataFrame。
+            字段：
+                var
+                value
+
+        df_uses:
+            TAC_Use.csv 读取后的 DataFrame。
+            字段：
+                stmtID
+                var
+                argIndex
+
+        df_stmts_in_block:
+            TAC_Block.csv 读取后的 DataFrame。
+            字段：
+                stmtID
+                blockID
+
+        df_opcodes:
+            TAC_Op.csv 读取后的 DataFrame。
+            字段：
+                stmtID
+                opcode
+
+        global_cfg:
+            全局控制流图，类型为 networkx.DiGraph。
+
+        max_depth:
+            从 selector block 向后遍历的最大深度。
+            用于防止循环或异常 CFG 导致无限遍历。
+
+    返回：
+        DataFrame。
+        每一行对应一条 selector_blockID -> REVERT 路径。
+    """
+
+    results = []
+
+    # ---------------------------------------------------------
+    # 1. 统一 stmtID 和 blockID 的字符串格式
+    # ---------------------------------------------------------
+    df_stmts = df_stmts_in_block.copy()
+    df_ops = df_opcodes.copy()
+    df_use = df_uses.copy()
+    df_values = df_var_values.copy()
+
+    df_stmts["stmtID"] = df_stmts["stmtID"].astype(str)
+    df_stmts["blockID"] = df_stmts["blockID"].astype(str)
+
+    df_ops["stmtID"] = df_ops["stmtID"].astype(str)
+    df_ops["opcode"] = df_ops["opcode"].astype(str).str.upper()
+
+    df_use["stmtID"] = df_use["stmtID"].astype(str)
+    df_use["var"] = df_use["var"].astype(str)
+
+    df_values["var"] = df_values["var"].astype(str)
+
+    # ---------------------------------------------------------
+    # 2. 构造常用查询表
+    # ---------------------------------------------------------
+
+    # stmtID -> opcode
+    stmt_opcode_dict = dict(
+        zip(
+            df_ops["stmtID"],
+            df_ops["opcode"],
+        )
+    )
+
+    # blockID -> 按原始顺序排列的 stmtID 列表
+    block_stmt_dict = {}
+
+    for _, row in df_stmts.iterrows():
+        block_id = row["blockID"]
+        stmt_id = row["stmtID"]
+
+        block_stmt_dict.setdefault(
+            block_id,
+            [],
+        ).append(stmt_id)
+
+    # var -> value
+    var_value_dict = df_var_values.set_index('var')['value'].to_dict()
+
+    # CFG 中节点的实际对象。
+    # 如果 graph node 不是字符串，可通过字符串找到原始节点对象。
+    cfg_node_dict = {
+        str(node): node
+        for node in global_cfg.nodes
+    }
+
+    # ---------------------------------------------------------
+    # 3. 针对每一个 selector block 遍历局部错误处理路径
+    # ---------------------------------------------------------
+    for _, selector_row in selector_blocks.iterrows():
+        selector_block_id = str(
+            selector_row["selector_blockID"]
+        )
+
+        selector_node = cfg_node_dict.get(
+            selector_block_id
+        )
+
+        # selector block 不在 CFG 中
+        if selector_node is None:
+            result = selector_row.to_dict()
+
+            result.update(
+                {
+                    "revert_blockID": None,
+                    "cfg_path": [],
+                    "mstore_stmtIDs": [],
+                    "mstore_details": [],
+                    "error_message": None,
+                    "error_message_status": "selector_block_not_in_cfg",
+                }
+            )
+
+            results.append(result)
+            continue
+
+        # -----------------------------------------------------
+        # 4. 使用 DFS 搜索 selector block -> REVERT 的局部路径
+        #
+        # stack 中保存：
+        #     当前节点
+        #     当前路径
+        #     当前深度
+        # -----------------------------------------------------
+        stack = [
+            (
+                selector_node,
+                [selector_node],
+                0,
+            )
+        ]
+
+        revert_paths = []
+
+        while stack:
+            current_node, current_path, depth = stack.pop()
+
+            current_block_id = str(
+                current_node
+            )
+
+            stmt_ids = block_stmt_dict.get(
+                current_block_id,
+                [],
+            )
+
+            opcodes = [
+                stmt_opcode_dict.get(stmt_id)
+                for stmt_id in stmt_ids
+            ]
+
+            # 遇到 REVERT：当前路径结束
+            if "REVERT" in opcodes:
+                revert_paths.append(
+                    current_path
+                )
+                continue
+
+            # 遍历深度达到阈值：停止扩展
+            if depth >= max_depth:
+                continue
+
+            # 继续遍历所有后继节点
+            for successor in global_cfg.successors(
+                    current_node
+            ):
+                # 防止 CFG 中存在循环
+                if successor in current_path:
+                    continue
+
+                stack.append(
+                    (
+                        successor,
+                        current_path + [successor],
+                        depth + 1,
+                    )
+                )
+
+        # -----------------------------------------------------
+        # 5. 如果没有找到 REVERT 路径，保留记录用于调试
+        # -----------------------------------------------------
+        if not revert_paths:
+            result = selector_row.to_dict()
+
+            result.update(
+                {
+                    "revert_blockID": None,
+                    "cfg_path": [selector_block_id],
+                    "mstore_stmtIDs": [],
+                    "mstore_details": [],
+                    "error_message": None,
+                    "error_message_status": "revert_path_not_found",
+                }
+            )
+
+            results.append(result)
+            continue
+
+        # -----------------------------------------------------
+        # 6. 分别处理每一条 selector -> REVERT 路径
+        # -----------------------------------------------------
+        for path in revert_paths:
+            path_block_ids = [
+                str(block)
+                for block in path
+            ]
+
+            mstore_details = []
+            message_chunks = []
+
+            # -------------------------------------------------
+            # 7. 收集路径上的全部 MSTORE
+            # -------------------------------------------------
+            for block_id in path_block_ids:
+                stmt_ids = block_stmt_dict.get(
+                    block_id,
+                    [],
+                )
+
+                for stmt_id in stmt_ids:
+                    opcode = stmt_opcode_dict.get(
+                        stmt_id
+                    )
+
+                    if opcode == "CODECOPY":
+                        use_rows = df_use[
+                            df_use["stmtID"] == stmt_id
+                            ].copy()
+
+                        if "argIndex" in use_rows.columns:
+                            use_rows = use_rows.sort_values(
+                                "argIndex"
+                            )
+
+                        # CODECOPY memory_offset, code_offset, size
+                        if len(use_rows) < 3:
+                            mstore_details.append(
+                                {
+                                    "blockID": block_id,
+                                    "mstore_stmtID": stmt_id,
+                                    "status": "codecopy_missing_operand",
+                                }
+                            )
+
+                            break
+
+                        code_offset_var = str(
+                            use_rows.iloc[1]["var"]
+                        )
+
+                        size_var = str(
+                            use_rows.iloc[2]["var"]
+                        )
+
+                        code_offset_value = var_value_dict.get(
+                            code_offset_var
+                        )
+
+                        size_value = var_value_dict.get(
+                            size_var
+                        )
+
+                        deployed_bytecode_path = artifacts_path / "bytecode.hex"
+
+                        deployed_bytecode = deployed_bytecode_path.read_text(encoding="utf-8").strip()
+
+                        decoded_chunk = decode_codecopy_string(
+                            deployed_bytecode,
+                            code_offset_value,
+                            size_value,
+                        )
+
+                        if decoded_chunk is not None:
+                            message_chunks.append(
+                                decoded_chunk
+                            )
+
+                        mstore_details.append(
+                            {
+                                "blockID": block_id,
+                                "mstore_stmtID": stmt_id,
+                                "opcode": "CODECOPY",
+                                "code_offset_var": code_offset_var,
+                                "code_offset_value": code_offset_value,
+                                "size_var": size_var,
+                                "size_value": size_value,
+                                "decoded_chunk": decoded_chunk,
+                                "status": (
+                                    "decoded"
+                                    if decoded_chunk is not None
+                                    else "codecopy_string_not_decoded"
+                                ),
+                            }
+                        )
+
+                        # 一个 CODECOPY 已经完成字符串正文写入，
+                        # 无需继续扫描当前 block 中后续语句。
+                        break
+
+                    if opcode != "MSTORE":
+                        continue
+
+                    # -----------------------------------------
+                    # 8. 找到 MSTORE 的操作数
+                    #
+                    # MSTORE offset, value
+                    #
+                    use_rows = df_use[
+                        df_use["stmtID"] == stmt_id
+                        ].copy()
+
+                    if "index" in use_rows.columns:
+                        use_rows = use_rows.sort_values(
+                            "index"
+                        )
+
+                    if len(use_rows) < 2:
+                        mstore_details.append(
+                            {
+                                "blockID": block_id,
+                                "mstore_stmtID": stmt_id,
+                                "value_var": None,
+                                "value": None,
+                                "decoded_chunk": None,
+                                "status": "missing_operand",
+                            }
+                        )
+
+                        continue
+
+                    value_var = str(
+                        use_rows.iloc[1]["var"]
+                    )
+
+                    # -----------------------------------------
+                    # 9. 恢复 MSTORE 第二个操作数对应的常量值
+                    # -----------------------------------------
+                    print(value_var)
+                    value = var_value_dict.get(
+                        value_var
+                    )
+
+                    # -----------------------------------------
+                    # 10. 尝试解码字符串片段
+                    # -----------------------------------------
+                    print(f"正在解码的hex_value：{value}")
+                    decoded_chunk = decode_hex_string_update(
+                        value
+                    )
+                    print(f"解码后的value：{decoded_chunk}")
+                    if decoded_chunk is not None:
+                        message_chunks.append(
+                            decoded_chunk
+                        )
+
+                    mstore_details.append(
+                        {
+                            "blockID": block_id,
+                            "mstore_stmtID": stmt_id,
+                            "value_var": value_var,
+                            "value": value,
+                            "decoded_chunk": decoded_chunk,
+                            "status": (
+                                "decoded"
+                                if decoded_chunk is not None
+                                else "not_string_constant"
+                            ),
+                        }
+                    )
+
+            # -------------------------------------------------
+            # 11. 拼接同一路径上的字符串片段
+            # -------------------------------------------------
+            error_message = (
+                "".join(message_chunks)
+                if message_chunks
+                else None
+            )
+
+            result = selector_row.to_dict()
+
+            result.update(
+                {
+                    "revert_blockID": path_block_ids[-1],
+                    "cfg_path": path_block_ids,
+                    "mstore_stmtIDs": [
+                        detail["mstore_stmtID"]
+                        for detail in mstore_details
+                    ],
+                    "mstore_details": mstore_details,
+                    "error_message": error_message,
+                    "error_message_status": (
+                        "decoded"
+                        if error_message is not None
+                        else "string_not_decoded"
+                    ),
+                }
+            )
+
+            results.append(result)
+
+    return pd.DataFrame(results)
 
 
 # 经验主义归纳的结果，硬编码错误处理过程是连续的，也就是在函数签名后的第四个block中写入错误信息，暂时先这样做
@@ -1529,7 +2028,7 @@ def extract_error_message_mstores(
         block_stmts = df_stmts_in_block[
             df_stmts_in_block["blockID"].astype(str)
             == str(error_message_block)
-        ][["stmtID"]].copy()
+            ][["stmtID"]].copy()
 
         # 保留 block 内语句原始顺序
         block_stmts["stmt_order"] = range(
@@ -1548,7 +2047,7 @@ def extract_error_message_mstores(
         mstore_rows = mstore_rows[
             mstore_rows["opcode"].astype(str).str.upper()
             == "MSTORE"
-        ].sort_values(
+            ].sort_values(
             "stmt_order"
         )
 
@@ -1579,7 +2078,7 @@ def extract_error_message_mstores(
             mstore_uses = df_uses[
                 df_uses["stmtID"].astype(str)
                 == str(mstore_stmt_id)
-            ].copy()
+                ].copy()
 
             mstore_uses = mstore_uses.sort_values(
                 "index"
@@ -1609,7 +2108,7 @@ def extract_error_message_mstores(
             value_rows = df_var_values[
                 df_var_values["var"].astype(str)
                 == str(value_var)
-            ]
+                ]
 
             if value_rows.empty:
                 value = None
@@ -1669,12 +2168,11 @@ def extract_error_message_mstores(
     return pd.DataFrame(results)
 
 
-
 def merge_check_blocks(
-    BASE_CHECK_BLOCKS,
-    checkBlock_des_dict,
-    SUPPLY_CHECK_BLOCKS,
-    supplyBlock_des_dict,
+        BASE_CHECK_BLOCKS,
+        checkBlock_des_dict,
+        SUPPLY_CHECK_BLOCKS,
+        supplyBlock_des_dict,
 ):
     """
     合并宽松检查块与错误驱动检查块，并将错误处理信息
@@ -1736,15 +2234,18 @@ def merge_check_blocks(
 
         # 跳过未成功恢复的错误信息
         if (
-            error_message is None
-            or not str(error_message).strip()
+                error_message is None
+                or not str(error_message).strip()
         ):
-            continue
+            error_description = (
+                "基于后续逻辑提取的错误处理信息：there exists a revert operation, but cant infer its error information"
+            )
+        else:
+            error_description = (
+                f"基于后续逻辑提取的错误处理信息："
+                f"{str(error_message).strip()}"
+            )
 
-        error_description = (
-            f"基于后续逻辑提取的错误处理信息："
-            f"{str(error_message).strip()}"
-        )
 
         original_description = merged_checkBlock_des_dict.get(
             block_id
@@ -1779,6 +2280,7 @@ def merge_check_blocks(
         merged_checkBlock_des_dict,
     )
 
+
 # todo 提取call指令所在区块检查块，没有添加相关的语义描述，或者说应该对call指令区块进行特殊处理：
 # 1.对callprivate抽取函数名进行补充，并且尽量提取内部的检查块
 # 2.对call/staticcall进行精细化区分
@@ -1787,14 +2289,14 @@ def merge_check_blocks(
 # 然后取一个并集，并且使用严格块的错误信息来补充检查块语义
 def build_AC_check_blocks(artifacts_path, df_defines, df_uses, df_opcodes, df_stmts_in_block, storage,
                           df_publicArgs, df_formalArgs, df_functionCall, df_var_values, global_cfg):
-
     logger.info("开始构建授权检查块")
     sload_semantics_dict = storage.set_index('stmtID')['semantic_with_type'].to_dict()
     print(sload_semantics_dict)
 
     const_value_dict = df_var_values.set_index('var')['value'].to_dict()
 
-    df_block_with_error = extract_business_block(df_var_values, df_defines, df_stmts_in_block, df_opcodes, df_uses, global_cfg)
+    df_block_with_error = extract_business_block(artifacts_path, df_var_values, df_defines, df_stmts_in_block,
+                                                 df_opcodes, df_uses, global_cfg)
     df_block_with_error.to_excel(artifacts_path / "output_debug" / "block_with_error.xlsx", index=False)
     # 错误驱动的检查块-错误信息dict
     ERROR_DRIVED_CHECK_BLOCKS = df_block_with_error['guard_blockID'].tolist()
@@ -1806,12 +2308,13 @@ def build_AC_check_blocks(artifacts_path, df_defines, df_uses, df_opcodes, df_st
     BASE_CHECK_BLOCKS, checkBlock_des_dict = extract_predicate_slices(ddg, df_opcodes, df_stmts_in_block,
                                                                       sload_semantics_dict, const_value_dict)
 
-    # print(checkBlock_des_dict)
-
     # 使用错误驱动检查块补充宽松检查块的错误信息
     final_check_blocks, final_checkBlock_des_dict = merge_check_blocks(BASE_CHECK_BLOCKS, checkBlock_des_dict,
                                                                        ERROR_DRIVED_CHECK_BLOCKS, block_error_dict)
-
+    print(BASE_CHECK_BLOCKS)
+    print(checkBlock_des_dict)
+    print(final_check_blocks)
+    print(final_checkBlock_des_dict)
     # # 提取arg和状态交汇的检查块(严格的检查块规则)
     # df_allArgs = pd.concat([df_publicArgs, df_formalArgs], ignore_index=True)
     # TRUE_AUTH_BLOCKS_PUBLICARGS = extract_arg_state_rendezvous(ddg, df_defines, df_allArgs, df_opcodes,
@@ -1834,7 +2337,6 @@ def build_AC_check_blocks(artifacts_path, df_defines, df_uses, df_opcodes, df_st
 
     # print(POTENTIAL_AUTH_BLOCKS)
     return final_check_blocks, final_checkBlock_des_dict, POTENTIAL_AUTH_BLOCKS
-
 
 
 if __name__ == "__main__":

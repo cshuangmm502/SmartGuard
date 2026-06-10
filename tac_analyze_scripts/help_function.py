@@ -196,6 +196,58 @@ def decode_hex_string(hex_value):
         return None
 
 
+def decode_hex_string_update(hex_value):
+    """
+    尝试将十六进制常量解码为 UTF-8 字符串片段。
+
+    例如：
+        0x616c72656164792070726f636573736564000000000000000000000000000000
+        -> "already processed"
+
+    对 ABI 偏移量、字符串长度等非文本常量返回 None。
+    """
+    if hex_value is None or pd.isna(hex_value):
+        return None
+
+    hex_value = str(hex_value).strip()
+
+    if not hex_value.startswith("0x"):
+        return None
+
+    hex_data = hex_value[2:]
+
+    # bytes.fromhex() 要求长度为偶数
+    if len(hex_data) % 2 != 0:
+        hex_data = "0" + hex_data
+
+    try:
+        raw_bytes = bytes.fromhex(hex_data)
+
+        # Solidity 使用 0x00 对字符串片段进行右侧补齐
+        raw_bytes = raw_bytes.rstrip(b"\x00")
+
+        if not raw_bytes:
+            return None
+
+        text = raw_bytes.decode("utf-8")
+
+        # 排除 0x20、0x40 等 ABI 元数据被误认为字符串
+        if len(text) < 2:
+            return None
+
+        if not text.isprintable():
+            return None
+
+        # 错误提示通常至少包含一个字母
+        if not any(char.isalpha() for char in text):
+            return None
+
+        return text
+
+    except (ValueError, UnicodeDecodeError):
+        return None
+
+
 if __name__ == "__main__":
     hex = "0x4f6e6c792063616c6c656420627920466163746f727900000000000000000000"
     text = decode_hex_string(hex)

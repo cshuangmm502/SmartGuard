@@ -1,11 +1,14 @@
 ====================================================================================================
 func_path: ['0x0', '0x419']
-suffered check blocks: ['0x0', '0x99d', '0x60b']
+suffered check blocks: ['0x0', '0x11b0', '0x99d', '0x60b', '0xd4b']
 
 checks_block_info:
-check block 0x0 业务约束逻辑: [Existence/Non-Zero Check on: msg.value],驱动此判断的数据源: CALLVALUE 
-check block 0x99d 业务约束逻辑: [CONST(0x1) EQ msg.sender],驱动此判断的数据源: CALLER 
-check block 0x60b 业务约束逻辑: [Storage[uint256 stor_7] LT Computed_Value],驱动此判断的数据源: SLOAD 
+check block 0x0 业务约束逻辑: [Existence/Non-Zero Check on: msg.value],驱动此判断的数据源: CALLVALUE, 
+check block 0x11b0 基于后续逻辑提取的错误处理信息：ERC20: mint to the zero address 
+check block 0x99d 业务约束逻辑: [Computed_Value EQ msg.sender],驱动此判断的数据源: CALLER, CALLPRIVATE,
+基于后续逻辑提取的错误处理信息：only owner 
+check block 0x60b 业务约束逻辑: [Storage[uint256 stor_7] LT Computed_Value],驱动此判断的数据源: SLOAD, 
+check block 0xd4b 基于后续逻辑提取的错误处理信息：SafeMath: addition overflow 
 
 support_check_analysis_result:
 {
@@ -16,31 +19,47 @@ support_check_analysis_result:
     {
       "block": "0x0",
       "type": "PAYMENT",
-      "reason": "msg.value non-zero check is a payment/business constraint, not a supportness validation"
+      "reason": "msg.value non-zero/existence check is a payment/business constraint, not supportness validation"
+    },
+    {
+      "block": "0x11b0",
+      "type": "BUSINESS_CONSTRAINT",
+      "reason": "zero-address mint check validates recipient address safety, not chain/resource/token support list"
     },
     {
       "block": "0x99d",
       "type": "AUTHORIZATION",
-      "reason": "msg.sender equality check is an authorization check, not a supportness validation"
+      "reason": "msg.sender compared against computed owner value with 'only owner' error indicates authorization check"
     },
     {
       "block": "0x60b",
       "type": "UNKNOWN_STORAGE",
-      "reason": "guard uses generic storage slot stor_7 with no recovered supportness semantic name; LT comparison alone is insufficient to identify chain/resource/token/router support validation"
+      "reason": "Storage[stor_7] < computed value is an unnamed generic storage comparison; no recovered semantic indicator of supportness mapping/list"
+    },
+    {
+      "block": "0xd4b",
+      "type": "BUSINESS_CONSTRAINT",
+      "reason": "SafeMath addition overflow is arithmetic safety, not supportness validation"
     }
   ],
-  "reason": "No guard block shows a recovered supportness variable or a clearly identifiable support-validation condition. The observed guards are payment, authorization, and an untyped generic storage comparison."
+  "reason": "No guard block shows a recovered supportness variable or a clear chain/resource/token/router/record support validation. The observed guards are payment, authorization, arithmetic, zero-address safety, and an unnamed generic storage comparison."
 }
 
 ====================================================================================================
 🏁 扫描完成。共分析了 1 条路径。
 ====================================================================================================
 func_path: ['0x0', '0x318']
-suffered check blocks: ['0x0', '0x10ae']
+suffered check blocks: ['0x0', '0x102c', '0x10ae', '0xf05', '0xdaf', '0xcb1', '0x1018']
 
 checks_block_info:
-check block 0x0 业务约束逻辑: [Existence/Non-Zero Check on: msg.value],驱动此判断的数据源: CALLVALUE 
-check block 0x10ae 业务约束逻辑: [Existence/Non-Zero Check on: msg.sender],驱动此判断的数据源: CALLER 
+check block 0x0 业务约束逻辑: [Existence/Non-Zero Check on: msg.value],驱动此判断的数据源: CALLVALUE, 
+check block 0x102c 基于后续逻辑提取的错误处理信息：segwit address length is not 43 or 63 
+check block 0x10ae 业务约束逻辑: [Existence/Non-Zero Check on: msg.sender],驱动此判断的数据源: CALLER,
+基于后续逻辑提取的错误处理信息：ERC20: burn from the zero address 
+check block 0xf05 基于后续逻辑提取的错误处理信息：mainnet address length is too long 
+check block 0xdaf 基于后续逻辑提取的错误处理信息：address length is too short 
+check block 0xcb1 基于后续逻辑提取的错误处理信息：there exists a revert operation, but cant infer its error information 
+check block 0x1018 基于后续逻辑提取的错误处理信息：unsupported address leading symbol 
 repeat_check_analysis_result:
 {
   "semantic_repetitiveness_check": "NO",
@@ -50,28 +69,87 @@ repeat_check_analysis_result:
     {
       "block": "0x0",
       "type": "PAYMENT",
-      "reason": "Guard checks msg.value non-zero; this is a payment/business constraint, not duplicate/replay prevention."
+      "reason": "Checks msg.value non-zero/existence; payment constraint, not duplicate/replay prevention"
     },
     {
       "block": "0x10ae",
       "type": "AUTHORIZATION",
-      "reason": "Guard checks msg.sender existence/non-zero; caller-related checks are authorization-related, not repetitiveness checks."
+      "reason": "Checks msg.sender/non-zero caller context; caller-related check is not a repetitiveness guard"
+    },
+    {
+      "block": "0x102c",
+      "type": "BUSINESS_CONSTRAINT",
+      "reason": "Segwit address length validation only"
+    },
+    {
+      "block": "0xf05",
+      "type": "BUSINESS_CONSTRAINT",
+      "reason": "Mainnet address length too long validation only"
+    },
+    {
+      "block": "0xdaf",
+      "type": "BUSINESS_CONSTRAINT",
+      "reason": "Address length too short validation only"
+    },
+    {
+      "block": "0xcb1",
+      "type": "OTHER",
+      "reason": "Generic revert present but no processed/nonce/deposit/vote record guard identified"
+    },
+    {
+      "block": "0x1018",
+      "type": "BUSINESS_CONSTRAINT",
+      "reason": "Unsupported address leading symbol validation only"
     }
   ],
-  "reason": "The protected guards only involve msg.value and msg.sender. Per the rules, payment and caller checks are not repetitiveness checks, and there is no guard on nonce, vote record, deposit record, or processed/executed/claimed status."
+  "reason": "The listed guards are payment, caller, and address-format/business validations. No guard references hasVotedOnProposal, depositRecords, nonces, or any processed/executed/claimed/used/completed record that would prevent repeated or replayed operations."
 }
 
 signature_check_analysis_result:
 {
   "knowledge_base_match": "NO",
-  "semantic_balance_check": "POSSIBLE",
-  "confidence": "MEDIUM",
-  "evidence": [],
-  "non_balance_guards": [
-    "Existence/Non-Zero Check on: msg.value",
-    "Existence/Non-Zero Check on: msg.sender"
+  "semantic_signature_check": "NO",
+  "is_path_relevant": true,
+  "confidence": "HIGH",
+  "signature_evidence": [],
+  "non_signature_guards": [
+    {
+      "block": "0x0",
+      "type": "OTHER",
+      "reason": "Checks msg.value non-zero existence; payment/value constraint, not signature verification"
+    },
+    {
+      "block": "0x102c",
+      "type": "OTHER",
+      "reason": "Segwit address length validation; input-format check, not signer or signature validation"
+    },
+    {
+      "block": "0x10ae",
+      "type": "CALLER_AUTHORIZATION",
+      "reason": "Checks msg.sender non-zero for ERC20 burn zero-address protection; ordinary caller/address sanity check, not signer authorization semantics"
+    },
+    {
+      "block": "0xf05",
+      "type": "OTHER",
+      "reason": "Mainnet address length upper-bound validation; input-format check only"
+    },
+    {
+      "block": "0xdaf",
+      "type": "OTHER",
+      "reason": "Address length lower-bound validation; input-format check only"
+    },
+    {
+      "block": "0xcb1",
+      "type": "OTHER",
+      "reason": "Generic revert detected without inferred auth semantics; insufficient evidence for signature check"
+    },
+    {
+      "block": "0x1018",
+      "type": "OTHER",
+      "reason": "Unsupported address leading symbol validation; input-format/routing check, not cryptographic authorization"
+    }
   ],
-  "reason": "Only msg.value != 0 and msg.sender non-zero/caller checks are present; there is no dominating comparison validating balance, allowance, reserve, liquidity, or amount thresholds. Per rules, msg.value != 0 alone is only POSSIBLE."
+  "reason": "The guards only show value presence, caller/address non-zero checks, address format/length validation, and generic revert behavior. There is no evidence of cryptographic verification, recovered signer validation, relayer/validator authorization, threshold approval, expiry enforcement, or message binding. Therefore this path is not protected by a semantic SIGNATURE_CHECK."
 }
 
 ====================================================================================================
