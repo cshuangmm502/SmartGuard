@@ -10,6 +10,24 @@ import time
 from openai import OpenAI
 
 
+COMMON_RULES = """
+All provided guard blocks are JUMPI blocks that dominate the target bridge-event path.
+Each guard_info item describes an actual branch predicate.
+
+For each security obligation:
+1. First decide whether the obligation is applicable to the current path.
+2. Then decide whether it is satisfied.
+3. Equivalent protection mechanisms may satisfy the same obligation.
+4. Use MISSING only when the obligation is applicable and no equivalent protection appears.
+5. Use UNKNOWN when the available TAC evidence is insufficient.
+6. Use NOT_APPLICABLE when the path architecture does not require the obligation.
+7. Do not infer semantics from unknown stor_x names alone.
+8. External CALL or STATICCALL success checks alone do not prove a specific security obligation.
+9. Error messages may be used as supporting evidence.
+10. Output JSON only.
+"""
+
+
 def robust_extract_category(text):
     """
     双重保险解析策略：
@@ -81,7 +99,7 @@ def classify_event_with_agent(artifacts_path, event_signature, path="event_cache
         return cache[event_signature]
 
     # 2. 重试机制
-    max_retries = 3
+    max_retries = 1
     category = "OTHER"  # 默认值
 
     # 简单的去重处理，防止 Send(...) 和 Send( address...) 被当做两个
@@ -93,24 +111,12 @@ def classify_event_with_agent(artifacts_path, event_signature, path="event_cache
 
             response = call_llm_api_event_analysis(event_signature)
 
-            if response.status_code != 200:
-                print(f"   API Error: {response.status_code}")
-                time.sleep(1)
-                continue
+            result = process_llm_response(response)
 
-            result_dict = response.json()
-            raw_content = result_dict['choices'][0]['message']['content']
+            category = result['category']
 
-            # 【核心修改】使用双重保险解析
-            extracted_cat, extracted_reason = robust_extract_category(raw_content)
-
-            if extracted_cat:
-                category = extracted_cat
-                print(f"   Success! Category: {category}")
-                # print(f"   Reason: {extracted_reason}")
-                break
-            else:
-                print(f"   Failed to extract category. Raw: {raw_content[:50]}...")
+            print(f"   Success! Category: {category}")
+            # print(result)
 
         except Exception as e:
             print(f"   Exception: {e}")
@@ -125,21 +131,10 @@ def classify_event_with_agent(artifacts_path, event_signature, path="event_cache
 
 
 def call_llm_api_event_analysis(prompt):
-    url = "http://jeniya.cn/v1/chat/completions"
-    headers = {
-        'Accept': 'application/json',
-        'Authorization': 'sk-l783v1MYK4BqECPOCTdNDvzeuTatDqDhyzZy9WmsI3meVUOh',  # 填入你的 Key
-        'Content-Type': 'application/json'
-    }
+    conn = http.client.HTTPSConnection("jeniya.cn")
 
-    payload = {
-        # 建议换用更听话的模型，Gemini-pro 有时还是会输出 markdown
-        # 如果可以使用 gpt-3.5-turbo 或 gpt-4o-mini，格式会极其稳定
-        "model": "gemini-3-pro-preview",
-
-        # 【关键】强制 JSON 模式 (如果是 OpenAI 兼容接口通常支持这个参数)
-        "response_format": {"type": "json_object"},
-
+    payload = json.dumps({
+        "model": "gpt-5.4",
         "messages": [
             {
                 "role": "system",
@@ -162,13 +157,52 @@ def call_llm_api_event_analysis(prompt):
                 }}
                 """
             }
-        ],
-        "temperature": 0.1,
-        "max_tokens": 500
-    }
+        ]
+    })
 
-    response = requests.post(url, headers=headers, json=payload, timeout=30)
-    return response
+    # payload = {
+    #     # 建议换用更听话的模型，Gemini-pro 有时还是会输出 markdown
+    #     # 如果可以使用 gpt-3.5-turbo 或 gpt-4o-mini，格式会极其稳定
+    #     "model": "gemini-3-pro-preview",
+    #
+    #     # 【关键】强制 JSON 模式 (如果是 OpenAI 兼容接口通常支持这个参数)
+    #     "response_format": {"type": "json_object"},
+    #
+    #     "messages": [
+    #         {
+    #             "role": "system",
+    #             "content": "You are a security expert. Output JSON only. {\"category\": \"...\", \"reason\": \"...\"}"
+    #         },
+    #         {
+    #             "role": "user",
+    #             "content": f"""
+    #             Classify Solidity Event: "{prompt}"
+    #
+    #             Categories:
+    #             - "DEPOSIT" (Funds entering bridge/lock/burn)
+    #             - "WITHDRAWAL" (Funds leaving bridge/unlock/mint)
+    #             - "OTHER" (Irrelevant)
+    #
+    #             JSON Format:
+    #             {{
+    #                 "category": "DEPOSIT" or "WITHDRAWAL" or "OTHER",
+    #                 "reason": "short text"
+    #             }}
+    #             """
+    #         }
+    #     ],
+    #     "temperature": 0.1,
+    #     "max_tokens": 500
+    # }
+
+    headers = {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer sk-FKWJV2ihsuWQ4SJ8PW7T0mtYxJL9DyHnAxVod9kf8BuS1Mf3',
+        'Content-Type': 'application/json'
+    }
+    conn.request("POST", "/v1/chat/completions", payload, headers)
+    res = conn.getresponse()
+    return res
 
 
 def call_llm_api_supportness_check(guard_blocks, guard_info):
@@ -515,6 +549,340 @@ def call_llm_api_signature_check(guard_blocks, guard_info):
     conn.request("POST", "/v1/chat/completions", payload, headers)
     res = conn.getresponse()
     return res
+
+
+def call_llm_api_PATH_CHECK(message):
+    conn = http.client.HTTPSConnection("jeniya.cn")
+    payload = json.dumps({
+        "model": "gpt-5.4",
+        "messages": message
+    })
+    headers = {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer sk-FKWJV2ihsuWQ4SJ8PW7T0mtYxJL9DyHnAxVod9kf8BuS1Mf3',
+        'Content-Type': 'application/json'
+    }
+    conn.request("POST", "/v1/chat/completions", payload, headers)
+    res = conn.getresponse()
+    return res
+
+
+def build_source_path_check_messages(
+    func_path,
+    guard_blocks,
+    guard_info,
+    external_calls=None,
+    state_updates=None
+):
+    external_calls = external_calls or []
+    state_updates = state_updates or []
+
+    return [
+        {
+            "role": "system",
+            "content": """
+You are a smart-contract static-analysis agent.
+
+Analyze one SOURCE-SIDE cross-chain deposit, lock, burn, swap-out, or transfer-out path.
+
+All provided guard blocks are JUMPI blocks that dominate the target bridge-event path.
+Each guard_info item describes an actual branch predicate.
+Error messages extracted from the revert branch may be used as supporting evidence.
+
+For each obligation:
+1. First decide whether it is applicable to the current path.
+2. Then decide whether it is satisfied.
+3. Equivalent protection mechanisms may satisfy the same obligation.
+4. Use MISSING only when the obligation is clearly applicable and no explicit or
+   equivalent protection appears in the provided evidence.
+5. Use UNKNOWN when the available TAC evidence is insufficient.
+6. Use NOT_APPLICABLE when the current path architecture does not require the obligation.
+7. Do not infer storage semantics from unknown stor_x names alone.
+8. External CALL or STATICCALL success checks alone do not prove a specific obligation.
+
+Classify the following obligations:
+
+P1. DEPOSIT_SUCCESS:
+The path confirms that assets are genuinely deposited, locked, burned, or transferred out.
+Equivalent mechanisms include:
+- bridge balance after deposit compared with balance before deposit
+- user balance compared with deposit amount
+- allowance or asset-ownership validation
+- bridge reserve or liquidity compared with required amount
+- guarded transferFrom or SafeERC20 asset-transfer operation
+- burn or escrow commitment
+
+Rules for P1:
+- A SafeERC20 error message is supporting evidence of a token operation.
+- Do not mark P1 as SATISFIED unless the asset-operation semantics are sufficiently clear.
+- msg.value fee validation alone is not P1.
+
+P2. ARGUMENT_VALIDATION:
+Sensitive user-controlled inputs are validated before affecting storage, asset operations,
+cross-chain payloads, or bridge events.
+Relevant inputs include calldata arguments, msg.sender, and msg.value.
+
+Rules for P2:
+- msg.value compared with a required fee is a MESSAGE_VALUE_VALIDATION check.
+- CALLER or msg.sender predicates are argument or caller-validation checks.
+- Amount-range checks are P2 unless explicitly linked to balance or liquidity.
+
+P3. SUPPORT_VALIDATION:
+Dynamic chain, domain, token, resourceID, router, or handler inputs are validated through:
+- whitelist checks
+- supported-list checks
+- mapping-existence checks
+- trusted configuration bindings
+
+Rules for P3 support validation:
+- Do not mark this obligation as MISSING unless dynamic routing inputs are identified.
+- Fixed or trusted configuration may make the obligation NOT_APPLICABLE.
+
+P3. EXTERNAL_TARGET_VALIDATION:
+A dynamic external-call target is validated through:
+- non-zero-address check
+- contract-code or call-to-contract check
+- whitelist check
+- trusted configuration binding
+
+Rules for P3 external-target validation:
+- token, vault, factory, router, or handler existence checks may satisfy this obligation.
+- CALL success checks alone are supporting evidence only.
+
+Output valid JSON only.
+Do not output markdown, comments, or additional text.
+"""
+        },
+        {
+            "role": "user",
+            "content": f"""
+func_path={func_path}
+guard_blocks={guard_blocks}
+guard_info={guard_info}
+optional_external_calls={external_calls}
+optional_state_updates={state_updates}
+
+Return exactly:
+{{
+  "path_role": "SOURCE",
+  "checks": {{
+    "P1_DEPOSIT_SUCCESS": {{
+      "applicability": "APPLICABLE|UNCERTAIN|NOT_APPLICABLE",
+      "status": "SATISFIED|MISSING|UNKNOWN|NOT_APPLICABLE",
+      "evidence": [
+        {{
+          "block": "block id or operation id",
+          "type": "short evidence type",
+          "strength": "HIGH|MEDIUM|LOW",
+          "reason": "short reason"
+        }}
+      ],
+      "reason": "short reason"
+    }},
+    "P2_ARGUMENT_VALIDATION": {{
+      "applicability": "APPLICABLE|UNCERTAIN|NOT_APPLICABLE",
+      "status": "SATISFIED|MISSING|UNKNOWN|NOT_APPLICABLE",
+      "evidence": [],
+      "reason": "short reason"
+    }},
+    "P3_SUPPORT_VALIDATION": {{
+      "applicability": "APPLICABLE|UNCERTAIN|NOT_APPLICABLE",
+      "status": "SATISFIED|MISSING|UNKNOWN|NOT_APPLICABLE",
+      "evidence": [],
+      "reason": "short reason"
+    }},
+    "P3_EXTERNAL_TARGET_VALIDATION": {{
+      "applicability": "APPLICABLE|UNCERTAIN|NOT_APPLICABLE",
+      "status": "SATISFIED|MISSING|UNKNOWN|NOT_APPLICABLE",
+      "evidence": [],
+      "reason": "short reason"
+    }}
+  }},
+  "coverage": "STRONG|PARTIAL|WEAK|UNKNOWN",
+  "limitations": [],
+  "reason": "short summary"
+}}
+"""
+        }
+    ]
+
+
+def build_destination_path_check_messages(
+    func_path,
+    guard_blocks,
+    guard_info,
+    external_calls=None,
+    verification_operations=None,
+    state_writebacks=None,
+    receiver_flows=None,
+):
+    external_calls = external_calls or []
+    verification_operations = verification_operations or []
+    state_writebacks = state_writebacks or []
+    receiver_flows = receiver_flows or []
+
+    return [
+        {
+            "role": "system",
+            "content": """
+You are a smart-contract static-analysis agent.
+
+Analyze one DESTINATION-SIDE cross-chain withdrawal, unlock, mint, release,
+claim, swap-in, or message-execution path.
+
+All provided guard blocks are JUMPI blocks that dominate the target bridge-event path.
+Each guard_info item describes an actual branch predicate.
+Error messages extracted from revert branches may be used as supporting evidence.
+
+For each obligation:
+1. First decide whether it is applicable to the current path.
+2. Then decide whether it is satisfied.
+3. Equivalent protection mechanisms may satisfy the same obligation.
+4. Use MISSING only when the obligation is clearly applicable and no explicit or
+   equivalent protection appears in the provided evidence.
+5. Use UNKNOWN when the available TAC evidence is insufficient.
+6. Use NOT_APPLICABLE when the current path architecture does not require the obligation.
+7. Do not infer storage semantics from unknown stor_x names alone.
+8. External CALL or STATICCALL success checks alone do not prove a specific obligation.
+9. A guard may provide evidence for more than one obligation when justified.
+
+Classify the following obligations:
+
+P3. SUPPORT_VALIDATION:
+Dynamic chain, domain, token, resourceID, router, or handler inputs are validated through:
+- whitelist checks
+- supported-list checks
+- mapping-existence checks
+- trusted configuration bindings
+
+Rules for P3 support validation:
+- Mapping checks such as resourceID-to-handler or token-to-contract may satisfy this obligation.
+- Do not mark this obligation as MISSING unless dynamic routing inputs are identified.
+- Fixed or trusted configuration may make the obligation NOT_APPLICABLE.
+
+P3. EXTERNAL_TARGET_VALIDATION:
+A dynamic external-call target is validated through:
+- non-zero-address checks
+- contract-code or call-to-contract checks
+- whitelist checks
+- trusted configuration bindings
+
+Rules for P3 external-target validation:
+- token, vault, factory, router, or handler existence checks may satisfy this obligation.
+- SafeERC20 call-to-non-contract errors support this obligation.
+- CALL success checks alone are supporting evidence only.
+
+P4. AUTHORIZATION_VERIFICATION:
+The path validates legitimate cross-chain authorization before asset release or execution.
+Equivalent mechanisms include:
+- cryptographic signature verification, such as ecrecover, recover, isValidSignature,
+  verifySignature, or proof verification
+- signer, relayer, validator, or trusted-caller authorization
+- multisignature, relayer-vote, or approval-threshold checks
+- trusted bridge-caller validation
+- timeout or expiry checks as supporting evidence
+
+Rules for P4:
+- A signature-count or relayer-vote threshold is authorization evidence.
+- An error such as "too few signatures" proves a threshold check, but does not prove
+  cryptographic validity, signer authorization, or message binding by itself.
+- expiry or deadline checks alone do not satisfy P4.
+- Ordinary msg.sender checks satisfy P4 only when clearly linked to a trusted bridge,
+  validator, relayer, signer, or handler role.
+
+P5. REPETITIVENESS_PROTECTION:
+The path prevents repeated withdrawal, repeated claim, or repeated message execution.
+Equivalent mechanisms include:
+- processed, received, executed, handled, claimed, withdrawn, used, or nonce records
+- depositRecords or hasVotedOnProposal checks
+- record-like mappings or lists checked against an unprocessed state
+- record checks followed by write-back to a processed state
+- an idempotent state machine
+
+Rules for P5:
+- Do not require recovered parameter names such as nonce or messageId.
+- A record-like mapping compared with 0 or false is possible replay-prevention evidence.
+- If a revert message clearly indicates duplicate processing, such as "withdrawn already",
+  the corresponding dominating record check may satisfy P5.
+- A later write-back to a processed state strengthens the evidence.
+- Unknown stor_x comparisons alone do not prove P5.
+
+P6. RELEASE_CORRECTNESS:
+The path ensures that released assets are sent to a valid receiver.
+Equivalent mechanisms include:
+- receiver compared with zero address
+- receiver bound to a verified message, request, signed payload, or trusted source
+- receiver derived from trusted configuration
+
+Rules for P6:
+- Do not mark this obligation as MISSING unless a dynamic receiver is identified.
+- If receiver data flow is unavailable, use UNKNOWN rather than MISSING.
+- A token-target validity check is P3 external-target validation, not P6.
+
+Output valid JSON only.
+Do not output markdown, comments, or additional text.
+"""
+        },
+        {
+            "role": "user",
+            "content": f"""
+func_path={func_path}
+guard_blocks={guard_blocks}
+guard_info={guard_info}
+optional_external_calls={external_calls}
+optional_verification_operations={verification_operations}
+optional_state_writebacks={state_writebacks}
+optional_receiver_flows={receiver_flows}
+
+Return exactly:
+{{
+  "path_role": "DESTINATION",
+  "checks": {{
+    "P3_SUPPORT_VALIDATION": {{
+      "applicability": "APPLICABLE|UNCERTAIN|NOT_APPLICABLE",
+      "status": "SATISFIED|MISSING|UNKNOWN|NOT_APPLICABLE",
+      "evidence": [
+        {{
+          "block": "block id or operation id",
+          "type": "short evidence type",
+          "strength": "HIGH|MEDIUM|LOW",
+          "reason": "short reason"
+        }}
+      ],
+      "reason": "short reason"
+    }},
+    "P3_EXTERNAL_TARGET_VALIDATION": {{
+      "applicability": "APPLICABLE|UNCERTAIN|NOT_APPLICABLE",
+      "status": "SATISFIED|MISSING|UNKNOWN|NOT_APPLICABLE",
+      "evidence": [],
+      "reason": "short reason"
+    }},
+    "P4_AUTHORIZATION_VERIFICATION": {{
+      "applicability": "APPLICABLE|UNCERTAIN|NOT_APPLICABLE",
+      "status": "SATISFIED|MISSING|UNKNOWN|NOT_APPLICABLE",
+      "evidence": [],
+      "reason": "short reason"
+    }},
+    "P5_REPETITIVENESS_PROTECTION": {{
+      "applicability": "APPLICABLE|UNCERTAIN|NOT_APPLICABLE",
+      "status": "SATISFIED|MISSING|UNKNOWN|NOT_APPLICABLE",
+      "evidence": [],
+      "reason": "short reason"
+    }},
+    "P6_RELEASE_CORRECTNESS": {{
+      "applicability": "APPLICABLE|UNCERTAIN|NOT_APPLICABLE",
+      "status": "SATISFIED|MISSING|UNKNOWN|NOT_APPLICABLE",
+      "evidence": [],
+      "reason": "short reason"
+    }}
+  }},
+  "coverage": "STRONG|PARTIAL|WEAK|UNKNOWN",
+  "limitations": [],
+  "reason": "short summary"
+}}
+"""
+        }
+    ]
 
 
 def process_llm_response(result):

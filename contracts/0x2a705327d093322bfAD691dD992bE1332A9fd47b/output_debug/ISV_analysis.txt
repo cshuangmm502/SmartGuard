@@ -1,0 +1,7 @@
+====================================================================================================
+Begin analyzing the source divergence.
+[*] Analysis complete, there is no divergence behavior in source chain that causes confusion.
+====================================================================================================
+Begin analyzing the settlement dependency analysis.
+[*] Analysis complete, results as follows.
+[{'func_id': '0xe2', 'event_name': 'Deposit(address,address,uint256,string)', 'event_stmtID': '0x1eca1', 'dependency_status': 'DEPENDENCY_UNKNOWN', 'confidence': 'LOW', 'supporting_args': [], 'event_related_args': [], 'state_related_args': [], 'external_call_related_args': [], 'private_call_related_args': []}]

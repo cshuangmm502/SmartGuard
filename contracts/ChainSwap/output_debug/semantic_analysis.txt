@@ -1,305 +1,326 @@
-func_path: ['0x0', '0x3d8', '0x705']
-suffered check blocks: ['0x18b6', '0x17a7', '0x1f33B0x1d32B0x1a19', '0x17f7', '0x1e89B0x1d32B0x1a19', '0x1963', '0x18ce', '0x17bf']
+====================================================================================================
+Begin analyzing the security of the source chain's deposit/lock operation call path.
+High level function call path: ['__function_selector__', 'send(uint256,address,uint256)', '0x705']
+Tac level call paths: 0x0 -> 0x3d8 -> 0x705 -> 0x840
+Check blocks traversed in the path: ['0x17bf', '0x18b6', '0x17a7', '0x1963', '0x1e89B0x1d32B0x1a19', '0x1f33B0x1d32B0x1a19', '0x18ce', '0x17f7']
 
 checks_block_info:
+check block 0x17bf 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: STATICCALL, SLOAD, 
 check block 0x18b6 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _factory]],驱动此判断的数据源: SLOAD, 
 check block 0x17a7 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _factory]],驱动此判断的数据源: SLOAD, 
+check block 0x1963 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: CALLVALUE, CALL, SLOAD, 
+check block 0x1e89B0x1d32B0x1a19 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _token]],驱动此判断的数据源: CALLPRIVATE, SLOAD,
+基于后续逻辑提取的错误处理信息：SafeERC20: call to non-contract 
 check block 0x1f33B0x1d32B0x1a19 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: CALL, SLOAD,
 基于后续逻辑提取的错误处理信息：SafeERC20: low-level call failed 
+check block 0x18ce 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: STATICCALL, SLOAD, 
 check block 0x17f7 业务约束逻辑: [msg.value LT Memory_Variable/Array_Length],驱动此判断的数据源: CALLVALUE,
 基于后续逻辑提取的错误处理信息：fee is too low 
-check block 0x1e89B0x1d32B0x1a19 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _token]],驱动此判断的数据源: SLOAD, CALLPRIVATE,
-基于后续逻辑提取的错误处理信息：SafeERC20: call to non-contract 
-check block 0x1963 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: CALLVALUE, SLOAD, CALL, 
-check block 0x18ce 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: STATICCALL, SLOAD, 
-check block 0x17bf 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: STATICCALL, SLOAD, 
-
-support_check_analysis_result:
+source_path_check_analysis_result:
 {
-  "semantic_supportness_check": "NO",
-  "confidence": "HIGH",
-  "supportness_evidence": [],
-  "non_support_guards": [
-    {
-      "block": "0x18b6",
-      "type": "UNKNOWN_STORAGE",
-      "reason": "Non-zero check on storage variable _factory; indicates configuration/existence, not a recovered supportness mapping or list."
+  "path_role": "SOURCE",
+  "checks": {
+    "P1_DEPOSIT_SUCCESS": {
+      "applicability": "APPLICABLE",
+      "status": "SATISFIED",
+      "evidence": [
+        {
+          "block": "0x1e89B0x1d32B0x1a19",
+          "type": "token-address validation",
+          "strength": "MEDIUM",
+          "reason": "Stored _token is checked for non-zero/contract existence, with SafeERC20 error 'call to non-contract', indicating a guarded ERC20 interaction target."
+        },
+        {
+          "block": "0x1f33B0x1d32B0x1a19",
+          "type": "safe token call success check",
+          "strength": "HIGH",
+          "reason": "External CALL guarded by SafeERC20-style revert 'low-level call failed', strong evidence of an attempted ERC20 transfer/transferFrom operation that must succeed."
+        }
+      ],
+      "reason": "The source path appears to perform a SafeERC20-guarded token operation against a validated token contract, which is an explicit equivalent mechanism for confirming asset transfer/lock semantics."
     },
-    {
-      "block": "0x17a7",
-      "type": "UNKNOWN_STORAGE",
-      "reason": "Non-zero check on storage variable _factory; indicates configuration/existence, not a recovered supportness mapping or list."
+    "P2_ARGUMENT_VALIDATION": {
+      "applicability": "APPLICABLE",
+      "status": "SATISFIED",
+      "evidence": [
+        {
+          "block": "0x17f7",
+          "type": "msg.value fee check",
+          "strength": "HIGH",
+          "reason": "CALLVALUE is compared against a required value and reverts with 'fee is too low', validating a sensitive user-supplied input."
+        }
+      ],
+      "reason": "At least one sensitive user-controlled input, msg.value, is explicitly validated before the path proceeds."
     },
-    {
-      "block": "0x1f33B0x1d32B0x1a19",
-      "type": "OTHER",
-      "reason": "External call success check with SafeERC20 low-level call failure handling; this is call-result validation, not supportness validation."
+    "P3_SUPPORT_VALIDATION": {
+      "applicability": "UNCERTAIN",
+      "status": "UNKNOWN",
+      "evidence": [
+        {
+          "block": "0x18b6",
+          "type": "factory existence check",
+          "strength": "LOW",
+          "reason": "Stored _factory is checked for non-zero, but the evidence does not clearly show validation of a user-controlled chain/domain/token/resource/router selector."
+        },
+        {
+          "block": "0x17a7",
+          "type": "factory existence check",
+          "strength": "LOW",
+          "reason": "Another non-zero check on stored _factory suggests trusted configuration, but not clearly a whitelist/support check over dynamic routing inputs."
+        }
+      ],
+      "reason": "There is evidence of configured addresses being present, but insufficient proof that any dynamic chain/domain/token/router/resource input is validated through a support list or trusted binding."
     },
-    {
-      "block": "0x17f7",
-      "type": "PAYMENT",
-      "reason": "msg.value compared against required amount/length with error 'fee is too low'; payment constraint, not supportness."
-    },
-    {
-      "block": "0x1e89B0x1d32B0x1a19",
-      "type": "UNKNOWN_STORAGE",
-      "reason": "Non-zero check on storage variable _token / contract existence with 'call to non-contract'; token contract presence is not the same as token support-list validation."
-    },
-    {
-      "block": "0x1963",
-      "type": "OTHER",
-      "reason": "External call success/failure check; validates execution result rather than supported chain/resource/token/router."
-    },
-    {
-      "block": "0x18ce",
-      "type": "OTHER",
-      "reason": "STATICCALL success/failure check only; no evidence of supportness variable such as chain/domain/resource/token/router mapping."
-    },
-    {
-      "block": "0x17bf",
-      "type": "OTHER",
-      "reason": "STATICCALL success/failure check only; no evidence of supportness variable such as chain/domain/resource/token/router mapping."
+    "P3_EXTERNAL_TARGET_VALIDATION": {
+      "applicability": "APPLICABLE",
+      "status": "SATISFIED",
+      "evidence": [
+        {
+          "block": "0x1e89B0x1d32B0x1a19",
+          "type": "non-zero/contract target check",
+          "strength": "HIGH",
+          "reason": "Stored external target _token is checked for existence, and the associated SafeERC20 revert 'call to non-contract' indicates contract-target validation."
+        },
+        {
+          "block": "0x18b6",
+          "type": "non-zero target check",
+          "strength": "MEDIUM",
+          "reason": "Stored _factory is checked for non-zero before use, indicating validation of another external target."
+        },
+        {
+          "block": "0x17a7",
+          "type": "non-zero target check",
+          "strength": "MEDIUM",
+          "reason": "Repeated existence validation on _factory further supports trusted external target binding."
+        }
+      ],
+      "reason": "Dynamic or configurable external call targets are validated through non-zero/existence checks, with token-target contract validation strongly evidenced by SafeERC20 semantics."
     }
+  },
+  "coverage": "PARTIAL",
+  "limitations": [
+    "No explicit TAC for the exact ERC20 method selector or transferFrom parameters was provided.",
+    "Support validation for chain/domain/resource/router inputs cannot be confirmed from the available guards alone.",
+    "Storage variable names such as _factory and _token suggest roles but exact semantics remain partially inferred from surrounding evidence."
   ],
-  "reason": "The guards shown are factory/token existence checks, external call success checks, and a fee/msg.value constraint. None uses a recovered supportness variable or a recognizable support mapping/list for chain, domain, resourceID, whitelist, token support, router availability, or replay/deposit records."
+  "reason": "The path is a source-side send flow with clear fee validation and strong evidence of a guarded SafeERC20 token operation against validated external targets. However, support validation for dynamic cross-chain routing inputs is not fully demonstrated by the provided guard evidence."
 }
 
 ====================================================================================================
-func_path: ['0x0', '0x272', '0x705']
-suffered check blocks: ['0x18b6', '0x17a7', '0x1f33B0x1d32B0x1a19', '0x17f7', '0x1e89B0x1d32B0x1a19', '0x1963', '0x18ce', '0x17bf']
+Begin analyzing the security of the source chain's deposit/lock operation call path.
+High level function call path: ['__function_selector__', 'sendFrom(address,uint256,address,uint256)', '0x705']
+Tac level call paths: 0x0 -> 0x272 -> 0x705 -> 0x840
+Check blocks traversed in the path: ['0x17bf', '0x18b6', '0x17a7', '0x1963', '0x1e89B0x1d32B0x1a19', '0x1f33B0x1d32B0x1a19', '0x18ce', '0x17f7']
 
 checks_block_info:
+check block 0x17bf 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: STATICCALL, SLOAD, 
 check block 0x18b6 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _factory]],驱动此判断的数据源: SLOAD, 
 check block 0x17a7 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _factory]],驱动此判断的数据源: SLOAD, 
+check block 0x1963 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: CALLVALUE, CALL, SLOAD, 
+check block 0x1e89B0x1d32B0x1a19 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _token]],驱动此判断的数据源: CALLPRIVATE, SLOAD,
+基于后续逻辑提取的错误处理信息：SafeERC20: call to non-contract 
 check block 0x1f33B0x1d32B0x1a19 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: CALL, SLOAD,
 基于后续逻辑提取的错误处理信息：SafeERC20: low-level call failed 
+check block 0x18ce 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: STATICCALL, SLOAD, 
 check block 0x17f7 业务约束逻辑: [msg.value LT Memory_Variable/Array_Length],驱动此判断的数据源: CALLVALUE,
 基于后续逻辑提取的错误处理信息：fee is too low 
-check block 0x1e89B0x1d32B0x1a19 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _token]],驱动此判断的数据源: SLOAD, CALLPRIVATE,
-基于后续逻辑提取的错误处理信息：SafeERC20: call to non-contract 
-check block 0x1963 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: CALLVALUE, SLOAD, CALL, 
-check block 0x18ce 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: STATICCALL, SLOAD, 
-check block 0x17bf 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: STATICCALL, SLOAD, 
-
-support_check_analysis_result:
+source_path_check_analysis_result:
 {
-  "semantic_supportness_check": "NO",
-  "confidence": "HIGH",
-  "supportness_evidence": [],
-  "non_support_guards": [
-    {
-      "block": "0x18b6",
-      "type": "UNKNOWN_STORAGE",
-      "reason": "Non-zero check on storage address _factory; indicates configured dependency existence, not clear chain/resource/token/router support validation."
+  "path_role": "SOURCE",
+  "checks": {
+    "P1_DEPOSIT_SUCCESS": {
+      "applicability": "APPLICABLE",
+      "status": "SATISFIED",
+      "evidence": [
+        {
+          "block": "0x1e89B0x1d32B0x1a19",
+          "type": "token-address existence check",
+          "strength": "MEDIUM",
+          "reason": "Stored token address is checked as non-zero before SafeERC20-related logic; revert text indicates token operation context."
+        },
+        {
+          "block": "0x1f33B0x1d32B0x1a19",
+          "type": "SafeERC20 call success check",
+          "strength": "HIGH",
+          "reason": "External CALL guarded with revert text 'SafeERC20: low-level call failed', indicating enforced success of token transfer operation."
+        }
+      ],
+      "reason": "This source-side sendFrom path appears to rely on a guarded SafeERC20 token operation using a configured token address. The guarded token call is strong evidence that assets must be transferred/locked successfully before proceeding."
     },
-    {
-      "block": "0x17a7",
-      "type": "UNKNOWN_STORAGE",
-      "reason": "Non-zero check on storage address _factory; same as above, lacks supportness semantic indicator."
+    "P2_ARGUMENT_VALIDATION": {
+      "applicability": "APPLICABLE",
+      "status": "SATISFIED",
+      "evidence": [
+        {
+          "block": "0x17f7",
+          "type": "msg.value minimum fee check",
+          "strength": "HIGH",
+          "reason": "CALLVALUE is compared against a required value and reverts with 'fee is too low'."
+        }
+      ],
+      "reason": "At least one sensitive user-controlled input, msg.value, is explicitly validated before the bridge path continues."
     },
-    {
-      "block": "0x1f33B0x1d32B0x1a19",
-      "type": "OTHER",
-      "reason": "External call success check with SafeERC20 low-level call failed; this is call-result handling, not support-list validation."
+    "P3_SUPPORT_VALIDATION": {
+      "applicability": "UNCERTAIN",
+      "status": "UNKNOWN",
+      "evidence": [
+        {
+          "block": "0x17a7",
+          "type": "factory existence check",
+          "strength": "LOW",
+          "reason": "A stored factory address is checked as non-zero, but the provided evidence does not show validation of any dynamic chain/domain/router/resource input."
+        },
+        {
+          "block": "0x18b6",
+          "type": "factory existence check",
+          "strength": "LOW",
+          "reason": "Repeated non-zero check on stored factory suggests configured dependency, but not clear support-list validation for dynamic routing parameters."
+        }
+      ],
+      "reason": "The path may use fixed configuration rather than dynamic chain/token/resource routing. Available guards do not clearly show whitelist or supported-list checks on user-selected bridge routing inputs."
     },
-    {
-      "block": "0x17f7",
-      "type": "PAYMENT",
-      "reason": "msg.value lower-bound check with error 'fee is too low'; payment/business constraint, not supportness."
-    },
-    {
-      "block": "0x1e89B0x1d32B0x1a19",
-      "type": "UNKNOWN_STORAGE",
-      "reason": "Non-zero check on storage address _token; only token contract existence/non-contract validation, not explicit supported-token list or mapping guard."
-    },
-    {
-      "block": "0x1963",
-      "type": "OTHER",
-      "reason": "External call success/failure check; execution-result validation rather than supportness guard."
-    },
-    {
-      "block": "0x18ce",
-      "type": "OTHER",
-      "reason": "STATICCALL success/failure check; only verifies external query succeeded."
-    },
-    {
-      "block": "0x17bf",
-      "type": "OTHER",
-      "reason": "STATICCALL success/failure check; only verifies external query succeeded."
+    "P3_EXTERNAL_TARGET_VALIDATION": {
+      "applicability": "APPLICABLE",
+      "status": "SATISFIED",
+      "evidence": [
+        {
+          "block": "0x1e89B0x1d32B0x1a19",
+          "type": "non-zero target validation",
+          "strength": "HIGH",
+          "reason": "Stored token address is checked for existence/non-zero before the external token call."
+        },
+        {
+          "block": "0x1e89B0x1d32B0x1a19",
+          "type": "contract-target indication",
+          "strength": "MEDIUM",
+          "reason": "Revert text 'SafeERC20: call to non-contract' supports that the token target is expected to be a contract."
+        }
+      ],
+      "reason": "The external token target is validated via a non-zero stored address check, and SafeERC20 semantics provide supporting evidence that non-contract targets are rejected."
     }
+  },
+  "coverage": "PARTIAL",
+  "limitations": [
+    "No explicit TAC evidence of the exact token method selector or transferFrom parameters was provided.",
+    "Support-validation for dynamic routing inputs cannot be confirmed from the listed guards alone.",
+    "Factory storage checks cannot be assumed to encode whitelist semantics without more context."
   ],
-  "reason": "None of the listed guards validates supported chain/domain/resourceID/whitelist/token/router/record semantics. Observed checks are payment constraints, external call success checks, and generic non-zero existence checks on _factory/_token, which are insufficient to classify as SUPPORTNESS_CHECK."
+  "reason": "This is a source-side sendFrom bridge path with clear fee validation and guarded SafeERC20 token-call success checks, supporting deposit success and external target validation. Dynamic support validation remains unclear from the available guard evidence."
 }
 
 ====================================================================================================
 🏁 扫描完成。共分析了 2 条路径。
 ====================================================================================================
-func_path: ['0x0', '0x470']
-suffered check blocks: ['0xd45', '0x18b6', '0x17a7', '0xe6a', '0xeba', '0x1f33B0x1e03B0x1cb8', '0x17f7', '0x1963', '0x1e89B0x1e03B0x1cb8', '0x18ce', '0x17bf', '0xe82']
+Begin analyzing the security of the target chain's withdrawal operation call path.
+High level function call path: ['__function_selector__', '0xa653d60c']
+Tac level call paths: 0x0 -> 0x470 -> 0x1338
+Check blocks traversed in the path: ['0x17bf', '0x1e89B0x1e03B0x1cb8', '0x18b6', '0xe6a', '0xeba', '0x1963', '0x18ce', '0x17a7', '0xd45', '0x17f7', '0x1f33B0x1e03B0x1cb8', '0xe82']
 
 checks_block_info:
-check block 0xd45 业务约束逻辑: [CONST(0x0) EQ Storage[mapping (uint256 => mapping (address => mapping (uint256 => uint256))) _received]],驱动此判断的数据源: SLOAD,
-基于后续逻辑提取的错误处理信息：withdrawn already 
+check block 0x17bf 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: STATICCALL, SLOAD, 
+check block 0x1e89B0x1e03B0x1cb8 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _token]],驱动此判断的数据源: CALLPRIVATE, SLOAD,
+基于后续逻辑提取的错误处理信息：SafeERC20: call to non-contract 
 check block 0x18b6 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _factory]],驱动此判断的数据源: SLOAD, 
-check block 0x17a7 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _factory]],驱动此判断的数据源: SLOAD, 
 check block 0xe6a 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _factory]],驱动此判断的数据源: SLOAD, 
 check block 0xeba 基于后续逻辑提取的错误处理信息：too few signatures 
-check block 0x1f33B0x1e03B0x1cb8 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: SLOAD, CALL,
-基于后续逻辑提取的错误处理信息：SafeERC20: low-level call failed 
+check block 0x1963 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: CALLVALUE, CALL, SLOAD, 
+check block 0x18ce 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: STATICCALL, SLOAD, 
+check block 0x17a7 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _factory]],驱动此判断的数据源: SLOAD, 
+check block 0xd45 业务约束逻辑: [CONST(0x0) EQ Storage[mapping (uint256 => mapping (address => mapping (uint256 => uint256))) _received]],驱动此判断的数据源: SLOAD,
+基于后续逻辑提取的错误处理信息：withdrawn already 
 check block 0x17f7 业务约束逻辑: [msg.value LT Memory_Variable/Array_Length],驱动此判断的数据源: CALLVALUE,
 基于后续逻辑提取的错误处理信息：fee is too low 
-check block 0x1963 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: CALLVALUE, SLOAD, CALL, 
-check block 0x1e89B0x1e03B0x1cb8 业务约束逻辑: [Existence/Non-Zero Check on: Storage[address _token]],驱动此判断的数据源: SLOAD, CALLPRIVATE,
-基于后续逻辑提取的错误处理信息：SafeERC20: call to non-contract 
-check block 0x18ce 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: STATICCALL, SLOAD, 
-check block 0x17bf 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: STATICCALL, SLOAD, 
+check block 0x1f33B0x1e03B0x1cb8 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: CALL, SLOAD,
+基于后续逻辑提取的错误处理信息：SafeERC20: low-level call failed 
 check block 0xe82 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: STATICCALL, SLOAD, 
-repeat_check_analysis_result:
+destination_path_check_analysis_result:
 {
-  "semantic_repetitiveness_check": "YES",
-  "confidence": "HIGH",
-  "repetitiveness_evidence": [
-    {
-      "block": "0xd45",
-      "constraint": "Storage[_received] == 0 with error 'withdrawn already'",
-      "variable": "_received",
-      "role": "PROCESSED_RECORD",
-      "strength": "HIGH"
+  "path_role": "DESTINATION",
+  "checks": {
+    "P3_SUPPORT_VALIDATION": {
+      "applicability": "APPLICABLE",
+      "status": "SATISFIED",
+      "evidence": [
+        {
+          "block": "0x1e89B0x1e03B0x1cb8",
+          "type": "mapping/contract existence check",
+          "strength": "HIGH",
+          "reason": "_token storage address is checked non-zero before use; indicates configured supported token/contract binding"
+        },
+        {
+          "block": "0x18b6",
+          "type": "trusted configuration existence check",
+          "strength": "MEDIUM",
+          "reason": "_factory storage address is checked non-zero, showing route depends on configured factory"
+        },
+        {
+          "block": "0x17a7",
+          "type": "trusted configuration existence check",
+          "strength": "MEDIUM",
+          "reason": "_factory storage address is checked non-zero again on dominating path"
+        }
+      ],
+      "reason": "Dynamic routing appears to use token/factory configuration, and the path validates these via non-zero configured storage bindings."
+    },
+    "P3_EXTERNAL_TARGET_VALIDATION": {
+      "applicability": "APPLICABLE",
+      "status": "SATISFIED",
+      "evidence": [
+        {
+          "block": "0x1e89B0x1e03B0x1cb8",
+          "type": "external target existence check",
+          "strength": "HIGH",
+          "reason": "_token address from storage is checked non-zero; revert text 'SafeERC20: call to non-contract' supports contract-target validation"
+        },
+        {
+          "block": "0x18ce",
+          "type": "external target existence check",
+          "strength": "MEDIUM",
+          "reason": "_factory storage address is checked non-zero before likely external interaction"
+        }
+      ],
+      "reason": "The path performs external token/factory interactions and includes explicit non-zero target validation, with SafeERC20 non-contract evidence strengthening target validation."
+    },
+    "P4_AUTHORIZATION_VERIFICATION": {
+      "applicability": "APPLICABLE",
+      "status": "SATISFIED",
+      "evidence": [
+        {
+          "block": "0xe6a",
+          "type": "signature threshold check",
+          "strength": "HIGH",
+          "reason": "Revert message 'too few signatures' proves a relayer/validator signature count threshold before release"
+        }
+      ],
+      "reason": "The destination release path enforces a multisignature-style authorization threshold, which is valid authorization evidence for cross-chain execution."
+    },
+    "P5_REPETITIVENESS_PROTECTION": {
+      "applicability": "APPLICABLE",
+      "status": "SATISFIED",
+      "evidence": [
+        {
+          "block": "0xd45",
+          "type": "processed/received record check",
+          "strength": "HIGH",
+          "reason": "_received mapping is required to equal 0, with revert 'withdrawn already', directly indicating duplicate-withdrawal prevention"
+        }
+      ],
+      "reason": "A record-like _received mapping is checked against zero and tied to a duplicate-processing revert, providing explicit replay protection."
+    },
+    "P6_RELEASE_CORRECTNESS": {
+      "applicability": "UNCERTAIN",
+      "status": "UNKNOWN",
+      "evidence": [],
+      "reason": "This is an asset-release path, but no receiver flow, zero-address receiver check, or message-bound receiver validation is visible in the provided TAC evidence."
     }
+  },
+  "coverage": "PARTIAL",
+  "limitations": [
+    "No receiver data-flow information was provided, so release-to-valid-receiver correctness cannot be confirmed.",
+    "No explicit cryptographic primitive operations were provided; authorization is inferred from the observed signature-threshold guard.",
+    "State write-back after the _received check was not provided, though the duplicate-processing guard is still strong evidence."
   ],
-  "non_repetitiveness_guards": [
-    {
-      "block": "0x18b6",
-      "type": "UNKNOWN_STORAGE",
-      "reason": "_factory non-zero check is deployment/config validation, not replay protection"
-    },
-    {
-      "block": "0x17a7",
-      "type": "UNKNOWN_STORAGE",
-      "reason": "_factory non-zero check is deployment/config validation, not replay protection"
-    },
-    {
-      "block": "0xe6a",
-      "type": "UNKNOWN_STORAGE",
-      "reason": "_factory non-zero check is deployment/config validation, not replay protection"
-    },
-    {
-      "block": "0xeba",
-      "type": "BUSINESS_CONSTRAINT",
-      "reason": "too few signatures is threshold validation, not repetitiveness protection"
-    },
-    {
-      "block": "0x17f7",
-      "type": "PAYMENT",
-      "reason": "msg.value fee check is payment/business logic, not replay protection"
-    },
-    {
-      "block": "0x1963",
-      "type": "OTHER",
-      "reason": "_token non-zero/contract existence check is asset configuration validation, not replay protection"
-    },
-    {
-      "block": "0x1f33B0x1e03B0x1cb8",
-      "type": "OTHER",
-      "reason": "external call success check is operational safety, not replay protection"
-    },
-    {
-      "block": "0x1e89B0x1e03B0x1cb8",
-      "type": "OTHER",
-      "reason": "external call success check is operational safety, not replay protection"
-    },
-    {
-      "block": "0x18ce",
-      "type": "OTHER",
-      "reason": "external call success check is operational safety, not replay protection"
-    },
-    {
-      "block": "0x17bf",
-      "type": "OTHER",
-      "reason": "external call success check is operational safety, not replay protection"
-    },
-    {
-      "block": "0xe82",
-      "type": "OTHER",
-      "reason": "external call success check is operational safety, not replay protection"
-    }
-  ],
-  "reason": "Block 0xd45 contains a true guard on storage record _received requiring it to be zero, and the associated revert text 'withdrawn already' clearly indicates duplicate withdrawal/replay prevention."
-}
-
-signature_check_analysis_result:
-{
-  "knowledge_base_match": "NO",
-  "semantic_signature_check": "POSSIBLE",
-  "is_path_relevant": true,
-  "confidence": "MEDIUM",
-  "signature_evidence": [
-    {
-      "block": "0xeba",
-      "constraint": "error indicates 'too few signatures'",
-      "variable": "signature count / required signatures",
-      "role": "THRESHOLD_CHECK",
-      "strength": "MEDIUM"
-    }
-  ],
-  "non_signature_guards": [
-    {
-      "block": "0xd45",
-      "type": "REPLAY_RECORD",
-      "reason": "_received mapping checked against 0 with error 'withdrawn already'; replay/duplicate-withdraw guard, not signature verification"
-    },
-    {
-      "block": "0x18b6",
-      "type": "UNKNOWN_STORAGE",
-      "reason": "_factory non-zero existence check only"
-    },
-    {
-      "block": "0x17a7",
-      "type": "UNKNOWN_STORAGE",
-      "reason": "_factory non-zero existence check only"
-    },
-    {
-      "block": "0xe6a",
-      "type": "UNKNOWN_STORAGE",
-      "reason": "_factory non-zero existence check only"
-    },
-    {
-      "block": "0x1f33B0x1e03B0x1cb8",
-      "type": "OTHER",
-      "reason": "external call success check for SafeERC20 low-level call"
-    },
-    {
-      "block": "0x17f7",
-      "type": "OTHER",
-      "reason": "fee amount check (msg.value vs required fee)"
-    },
-    {
-      "block": "0x1963",
-      "type": "OTHER",
-      "reason": "external call success check"
-    },
-    {
-      "block": "0x1e89B0x1e03B0x1cb8",
-      "type": "OTHER",
-      "reason": "_token non-zero/contract existence check"
-    },
-    {
-      "block": "0x18ce",
-      "type": "OTHER",
-      "reason": "STATICCALL success check only"
-    },
-    {
-      "block": "0x17bf",
-      "type": "OTHER",
-      "reason": "STATICCALL success check only"
-    },
-    {
-      "block": "0xe82",
-      "type": "OTHER",
-      "reason": "STATICCALL success check only"
-    }
-  ],
-  "reason": "Only one guard provides signature-related semantics: the explicit 'too few signatures' revert, which suggests a multisig/threshold authorization check. However, there is no direct evidence here of cryptographic verification, signer membership validation, recovered signer checks, or message-bound signature validation. The rest are replay, existence, fee, token, and call-success guards. Therefore the path is relevant to a protected withdrawal flow, but the available guard blocks show only possible signature protection rather than definitive semantic signature verification."
+  "reason": "The destination withdrawal path shows configured token/factory validation, external target validation, a signature-threshold authorization check, and explicit replay protection via a received-record guard. Receiver correctness remains unconfirmed due to missing receiver-flow evidence."
 }
 
 ====================================================================================================

@@ -86,16 +86,17 @@ def load_csv_from_gig(artifacts_dir, contract_name):
     df_publicFunction = pd.read_csv(out_dir / "PublicFunction.csv", sep="\t", header=None, engine="python")
     sol_file_path = artifacts_dir / f"{contract_name}.sol"
     df_decompiled_codes = pd.read_csv(sol_file_path, sep="\t", header=None, engine="python", skip_blank_lines=False)
+    df_entryBlock_funcName = pd.read_csv(out_dir / "HighLevelFunctionName.csv", names=['entry_block', 'func_name'], sep='\t')
     return (df_opcodes, df_defines, df_uses, df_stmts_in_block, df_var_values, df_mapping_slot,
             df_block_in_func, df_formalArgs, df_publicArgs, df_sign_eventName, df_blockEdge,
-            df_functionCall, df_functionReturn, df_publicFunction, df_decompiled_codes)
+            df_functionCall, df_functionReturn, df_publicFunction, df_entryBlock_funcName, df_decompiled_codes)
 
 
 def vulnerability_analysis(artifacts_path, contract_name):
     out_dir = Path(artifacts_path / "output_debug")
     (df_opcodes, df_defines, df_uses, df_stmts_in_block, df_var_values, df_mapping_slot, df_block_in_func,
      df_formalArgs, df_publicArgs, df_sign_eventName, df_blockEdge,
-     df_functionCall, df_functionReturn, df_publicFunction, df_decompiled_codes) = (
+     df_functionCall, df_functionReturn, df_publicFunction, df_entryBlock_funcName, df_decompiled_codes) = (
         load_csv_from_gig(artifacts_path, contract_name))
     storage_semantic = parsefromdecompiledcode(df_decompiled_codes)
     # storage_semantic.to_excel(out_dir / "storage_semantic.xlsx", index=False)
@@ -103,13 +104,13 @@ def vulnerability_analysis(artifacts_path, contract_name):
                                   storage_semantic)
     # print(storage)
     # storage.to_excel(out_dir / "storage.xlsx", index=False)
-    caller, callData = extract_all_publicFunc_call(df_opcodes, df_defines, df_uses, df_var_values, df_stmts_in_block)
-    # caller.to_excel(out_dir / "caller.xlsx", index=False)
-    # callData.to_excel(out_dir / "callData.xlsx", index=False)
-    callPubArgs = extract_all_publicFunc_args(df_publicArgs, df_uses, df_stmts_in_block)
-    # callPubArgs.to_excel(out_dir / "callPubArgs.xlsx", index=False)
-    callPriArgs = extract_all_privateFunc_args(df_formalArgs, df_uses, df_stmts_in_block, df_block_in_func)
-    # callPriArgs.to_excel(out_dir / "callPriArgs.xlsx", index=False)
+    # caller, callData = extract_all_publicFunc_call(df_opcodes, df_defines, df_uses, df_var_values, df_stmts_in_block)
+    # # caller.to_excel(out_dir / "caller.xlsx", index=False)
+    # # callData.to_excel(out_dir / "callData.xlsx", index=False)
+    # callPubArgs = extract_all_publicFunc_args(df_publicArgs, df_uses, df_stmts_in_block)
+    # # callPubArgs.to_excel(out_dir / "callPubArgs.xlsx", index=False)
+    # callPriArgs = extract_all_privateFunc_args(df_formalArgs, df_uses, df_stmts_in_block, df_block_in_func)
+    # # callPriArgs.to_excel(out_dir / "callPriArgs.xlsx", index=False)
     # # b, graph_index = generate_ListandGraph(tac_file)
 
     events = extract_all_events(df_opcodes, df_var_values, df_uses, df_sign_eventName, df_stmts_in_block)
@@ -128,20 +129,28 @@ def vulnerability_analysis(artifacts_path, contract_name):
                                                                                    storage, df_publicArgs,
                                                                                    df_formalArgs, df_functionCall,
                                                                                    df_var_values, global_cfg)
+    logger.info("开始进行访问控制缺陷分析")
     ACV_analysis(artifacts_path, df_functionCall, df_block_in_func, emitting_functions, informing_functions, fcg,
-                 global_cfg, df_functionReturn, AUTH_BLOCKS, POTENTIAL_AUTH_BLOCKS, authBlock_des_dict)
-
+                 global_cfg, df_functionReturn, AUTH_BLOCKS, POTENTIAL_AUTH_BLOCKS, authBlock_des_dict, df_entryBlock_funcName)
+    ACV_analysis_result_path = out_dir / "semantic_analysis.txt"
+    logger.info("访问控制缺陷分析完成,结果存储于%s", ACV_analysis_result_path)
     # 不一致的语义检测
+    logger.info("开始进行不一致的语义检测")
     ISV_analysis(artifacts_path, emitting_functions, df_opcodes, df_uses, df_defines, df_formalArgs)
+    ISV_analysis_result_path = out_dir / "ISV_analysis.txt"
+    logger.info("不一致的语义检测完成,结果存储于%s", ISV_analysis_result_path)
+
 
 # python3 main.py
 if __name__ == "__main__":
 
     PROJECT_ROOT = Path(__file__).resolve().parent
     CONTRACTS_PATH = PROJECT_ROOT / "contracts"
+    # CONTRACT_NAME = "0x0aBCFbfA8e3Fda8B7FBA18721Caf7d5cf55cF5f5"
     # CONTRACT_NAME = "0x0cD79409eD80d8a153A3c729aa1f8b5D44A29282"
+    CONTRACT_NAME = "0x2a705327d093322bfAD691dD992bE1332A9fd47b"
     # CONTRACT_NAME = "ChainSwap"
-    CONTRACT_NAME = "0x0aBCFbfA8e3Fda8B7FBA18721Caf7d5cf55cF5f5"
+
     CONTRACT_ARTIFACTS_PATH = CONTRACTS_PATH / CONTRACT_NAME
     setup_logging(CONTRACT_ARTIFACTS_PATH)
     logger.info("SmartGuard 启动")

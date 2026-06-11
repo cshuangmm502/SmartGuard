@@ -2289,32 +2289,36 @@ def merge_check_blocks(
 # 然后取一个并集，并且使用严格块的错误信息来补充检查块语义
 def build_AC_check_blocks(artifacts_path, df_defines, df_uses, df_opcodes, df_stmts_in_block, storage,
                           df_publicArgs, df_formalArgs, df_functionCall, df_var_values, global_cfg):
+
     logger.info("开始构建授权检查块")
     sload_semantics_dict = storage.set_index('stmtID')['semantic_with_type'].to_dict()
-    print(sload_semantics_dict)
+    # print(sload_semantics_dict)
 
     const_value_dict = df_var_values.set_index('var')['value'].to_dict()
 
-    df_block_with_error = extract_business_block(artifacts_path, df_var_values, df_defines, df_stmts_in_block,
-                                                 df_opcodes, df_uses, global_cfg)
-    df_block_with_error.to_excel(artifacts_path / "output_debug" / "block_with_error.xlsx", index=False)
-    # 错误驱动的检查块-错误信息dict
-    ERROR_DRIVED_CHECK_BLOCKS = df_block_with_error['guard_blockID'].tolist()
-    # print(ERROR_DRIVED_CHECK_BLOCKS)
-    block_error_dict = df_block_with_error.set_index('guard_blockID')['error_message'].to_dict()
 
     # #谓词（CALL、SLOAD、CALLVALUE等）授权块（宽松的检查块）
     ddg = build_data_dependency_graph(df_defines, df_uses)
     BASE_CHECK_BLOCKS, checkBlock_des_dict = extract_predicate_slices(ddg, df_opcodes, df_stmts_in_block,
                                                                       sload_semantics_dict, const_value_dict)
+    final_check_blocks = BASE_CHECK_BLOCKS
+    final_checkBlock_des_dict = checkBlock_des_dict
 
-    # 使用错误驱动检查块补充宽松检查块的错误信息
-    final_check_blocks, final_checkBlock_des_dict = merge_check_blocks(BASE_CHECK_BLOCKS, checkBlock_des_dict,
-                                                                       ERROR_DRIVED_CHECK_BLOCKS, block_error_dict)
-    print(BASE_CHECK_BLOCKS)
-    print(checkBlock_des_dict)
-    print(final_check_blocks)
-    print(final_checkBlock_des_dict)
+    # 错误驱动的检查块
+    df_block_with_error = extract_business_block(artifacts_path, df_var_values, df_defines, df_stmts_in_block,
+                                                 df_opcodes, df_uses, global_cfg)
+    df_block_with_error.to_excel(artifacts_path / "output_debug" / "block_with_error.xlsx", index=False)
+    if len(df_block_with_error) !=0 :
+        # 错误驱动的检查块-错误信息dict
+        ERROR_DRIVED_CHECK_BLOCKS = df_block_with_error['guard_blockID'].tolist()
+        # print(ERROR_DRIVED_CHECK_BLOCKS)
+        block_error_dict = df_block_with_error.set_index('guard_blockID')['error_message'].to_dict()
+
+        # 使用错误驱动检查块补充宽松检查块的错误信息
+        final_check_blocks, final_checkBlock_des_dict = merge_check_blocks(BASE_CHECK_BLOCKS, checkBlock_des_dict,
+                                                                           ERROR_DRIVED_CHECK_BLOCKS, block_error_dict)
+
+
     # # 提取arg和状态交汇的检查块(严格的检查块规则)
     # df_allArgs = pd.concat([df_publicArgs, df_formalArgs], ignore_index=True)
     # TRUE_AUTH_BLOCKS_PUBLICARGS = extract_arg_state_rendezvous(ddg, df_defines, df_allArgs, df_opcodes,
@@ -2336,6 +2340,7 @@ def build_AC_check_blocks(artifacts_path, df_defines, df_uses, df_opcodes, df_st
     POTENTIAL_AUTH_BLOCKS = list(df_functionCall.iloc[:, 0])
 
     # print(POTENTIAL_AUTH_BLOCKS)
+    logger.info("授权检查块构建完成")
     return final_check_blocks, final_checkBlock_des_dict, POTENTIAL_AUTH_BLOCKS
 
 

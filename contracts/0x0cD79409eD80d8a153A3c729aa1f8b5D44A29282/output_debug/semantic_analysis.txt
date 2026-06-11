@@ -1,0 +1,234 @@
+====================================================================================================
+Begin analyzing the security of the source chain's deposit/lock operation call path.
+High level function call path: ['__function_selector__', 'deposit(uint8,bytes32,bytes)']
+Tac level call paths: 0x0 -> 0x256 -> 0x8da
+Check blocks traversed in the path: ['0x7ca', '0x881', '0x79a', '0x867', '0x76e']
+
+checks_block_info:
+check block 0x7ca 业务约束逻辑: [Existence/Non-Zero Check on: Storage[mapping (uint256 => address) _resourceIDToHandlerAddress]],驱动此判断的数据源: SLOAD,
+基于后续逻辑提取的错误处理信息：QBridge: invalid resourceID 
+check block 0x881 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: SLOAD, CALL, CALLDATALOAD, 
+check block 0x79a 业务约束逻辑: [Storage[uint128 _fee] EQ msg.value],驱动此判断的数据源: CALLVALUE, SLOAD,
+基于后续逻辑提取的错误处理信息：QBridge: invalid fee 
+check block 0x867 业务约束逻辑: [Existence/Non-Zero Check on: Storage[mapping (uint256 => address) _resourceIDToHandlerAddress]],驱动此判断的数据源: SLOAD, 
+check block 0x76e 业务约束逻辑: [Existence/Non-Zero Check on: Storage[bool _paused]],驱动此判断的数据源: SLOAD,
+基于后续逻辑提取的错误处理信息：PausableUpgradeable: cannot be performed while the contract is paused 
+source_path_check_analysis_result:
+{
+  "path_role": "SOURCE",
+  "checks": {
+    "P1_DEPOSIT_SUCCESS": {
+      "applicability": "APPLICABLE",
+      "status": "UNKNOWN",
+      "evidence": [
+        {
+          "block": "0x881",
+          "type": "external call success check",
+          "strength": "LOW",
+          "reason": "A dominated external CALL is checked for success, which suggests some downstream handler/token operation, but call-success alone does not prove an actual deposit/lock/burn/transfer-out."
+        },
+        {
+          "block": "0x7ca",
+          "type": "handler existence check",
+          "strength": "LOW",
+          "reason": "A resourceID maps to a non-zero handler, indicating the path routes through a configured handler that may perform the asset operation."
+        }
+      ],
+      "reason": "This is a source-side deposit path, so asset-operation confirmation is applicable. However, the provided guards only show handler existence and external-call success; they do not explicitly show transferFrom, burn, lock, escrow, reserve, or balance/allowance validation."
+    },
+    "P2_ARGUMENT_VALIDATION": {
+      "applicability": "APPLICABLE",
+      "status": "SATISFIED",
+      "evidence": [
+        {
+          "block": "0x79a",
+          "type": "msg.value fee equality check",
+          "strength": "HIGH",
+          "reason": "The path requires msg.value to equal stored fee _fee, with revert message 'QBridge: invalid fee'."
+        },
+        {
+          "block": "0x76e",
+          "type": "paused state guard",
+          "strength": "MEDIUM",
+          "reason": "Execution is blocked when the contract is paused, preventing user-triggered effects under disallowed state."
+        }
+      ],
+      "reason": "User-controlled msg.value is explicitly validated before proceeding. Available evidence is sufficient to establish at least one sensitive-input validation on this path."
+    },
+    "P3_SUPPORT_VALIDATION": {
+      "applicability": "APPLICABLE",
+      "status": "SATISFIED",
+      "evidence": [
+        {
+          "block": "0x7ca",
+          "type": "resourceID to handler mapping existence check",
+          "strength": "HIGH",
+          "reason": "The path checks that _resourceIDToHandlerAddress[resourceID] is non-zero and otherwise reverts with 'QBridge: invalid resourceID'."
+        },
+        {
+          "block": "0x867",
+          "type": "resourceID to handler mapping existence check",
+          "strength": "HIGH",
+          "reason": "A second non-zero existence check on _resourceIDToHandlerAddress confirms only configured resourceIDs/handlers are accepted."
+        }
+      ],
+      "reason": "Dynamic routing via resourceID is explicitly validated against a configured mapping, satisfying support validation."
+    },
+    "P3_EXTERNAL_TARGET_VALIDATION": {
+      "applicability": "APPLICABLE",
+      "status": "SATISFIED",
+      "evidence": [
+        {
+          "block": "0x7ca",
+          "type": "non-zero external target from trusted mapping",
+          "strength": "HIGH",
+          "reason": "The external target handler is obtained from _resourceIDToHandlerAddress and required to be non-zero before use."
+        },
+        {
+          "block": "0x867",
+          "type": "trusted configuration binding",
+          "strength": "HIGH",
+          "reason": "The handler address is bound to resourceID through storage mapping existence validation, which is an accepted external-target validation mechanism."
+        },
+        {
+          "block": "0x881",
+          "type": "external call success check",
+          "strength": "LOW",
+          "reason": "The subsequent CALL success check supports that the validated handler is actually invoked, though success alone is not sufficient by itself."
+        }
+      ],
+      "reason": "A dynamic external target appears to be used, and it is validated through a non-zero trusted mapping from resourceID to handler address before the external call."
+    }
+  },
+  "coverage": "PARTIAL",
+  "limitations": [
+    "No TAC evidence explicitly shows the handler performing transferFrom, lock, burn, escrow, or reserve accounting.",
+    "The exact calldata arguments beyond resourceID and msg.value are not shown, so broader argument-range validation cannot be assessed.",
+    "Storage names alone do not reveal full handler semantics."
+  ],
+  "reason": "The source-side deposit path clearly validates fee and resourceID/handler configuration, and validates the dynamic external handler target via trusted mapping. But the provided evidence does not explicitly prove the underlying asset was actually deposited, locked, burned, or transferred out."
+}
+
+====================================================================================================
+Begin analyzing the security of the source chain's deposit/lock operation call path.
+High level function call path: ['__function_selector__', 'depositETH(uint8,bytes32,bytes)']
+Tac level call paths: 0x0 -> 0x73b -> 0x1e77
+Check blocks traversed in the path: ['0x22e9B0x1d25', '0x1d65', '0x1e04', '0x1d47', '0x1cf3', '0x1e1d']
+
+checks_block_info:
+check block 0x22e9B0x1d25 业务约束逻辑: [Args LT Storage[uint128 _fee] + Args],驱动此判断的数据源: SLOAD, CALLDATALOAD,
+基于后续逻辑提取的错误处理信息：SafeMath: addition overflow 
+check block 0x1d65 业务约束逻辑: [Existence/Non-Zero Check on: Storage[mapping (uint256 => address) _resourceIDToHandlerAddress]],驱动此判断的数据源: SLOAD,
+基于后续逻辑提取的错误处理信息：QBridge: invalid resourceID 
+check block 0x1e04 业务约束逻辑: [Existence/Non-Zero Check on: Storage[mapping (uint256 => address) _resourceIDToHandlerAddress]],驱动此判断的数据源: SLOAD, 
+check block 0x1d47 业务约束逻辑: [msg.value EQ Storage[uint128 _fee] + Args],驱动此判断的数据源: CALLVALUE, SLOAD, CALLDATALOAD,
+基于后续逻辑提取的错误处理信息：QBridge: invalid fee 
+check block 0x1cf3 业务约束逻辑: [Existence/Non-Zero Check on: Storage[bool _paused]],驱动此判断的数据源: SLOAD,
+基于后续逻辑提取的错误处理信息：PausableUpgradeable: cannot be performed while the contract is paused 
+check block 0x1e1d 业务约束逻辑: [Success/Failure Check on: External_Call],驱动此判断的数据源: SLOAD, CALL, CALLDATALOAD, 
+source_path_check_analysis_result:
+{
+  "path_role": "SOURCE",
+  "checks": {
+    "P1_DEPOSIT_SUCCESS": {
+      "applicability": "APPLICABLE",
+      "status": "UNKNOWN",
+      "evidence": [
+        {
+          "block": "0x1d47",
+          "type": "msg.value fee equality check",
+          "strength": "LOW",
+          "reason": "Checks msg.value equals stored fee plus calldata argument, but fee validation alone does not prove asset lock or transfer-out semantics."
+        },
+        {
+          "block": "0x1e1d",
+          "type": "external call success check",
+          "strength": "LOW",
+          "reason": "A CALL success predicate exists, but success alone does not establish that ETH was escrowed, locked, or otherwise committed for bridging."
+        }
+      ],
+      "reason": "This is a source-side depositETH path, so deposit success is relevant, but the provided guards only show fee/accounting checks, pause gating, handler existence, and generic call success; no explicit ETH lock/burn/escrow confirmation is visible."
+    },
+    "P2_ARGUMENT_VALIDATION": {
+      "applicability": "APPLICABLE",
+      "status": "SATISFIED",
+      "evidence": [
+        {
+          "block": "0x1d47",
+          "type": "msg.value validation",
+          "strength": "HIGH",
+          "reason": "Validates msg.value equals stored fee plus a calldata-derived amount; revert reason indicates invalid fee on mismatch."
+        },
+        {
+          "block": "0x22e9B0x1d25",
+          "type": "arithmetic/amount bound check",
+          "strength": "MEDIUM",
+          "reason": "Predicate constrains calldata argument relative to stored fee and includes overflow protection, indicating validation on user-controlled numeric inputs."
+        },
+        {
+          "block": "0x1cf3",
+          "type": "paused-state guard",
+          "strength": "MEDIUM",
+          "reason": "Prevents execution when the bridge is paused, gating sensitive operation before event/cross-chain effects."
+        }
+      ],
+      "reason": "User-controlled value inputs are validated through an exact msg.value requirement and arithmetic guards before proceeding."
+    },
+    "P3_SUPPORT_VALIDATION": {
+      "applicability": "APPLICABLE",
+      "status": "SATISFIED",
+      "evidence": [
+        {
+          "block": "0x1d65",
+          "type": "handler mapping existence check",
+          "strength": "HIGH",
+          "reason": "Checks non-zero address in _resourceIDToHandlerAddress mapping and reverts with 'QBridge: invalid resourceID', showing supported resource binding validation."
+        },
+        {
+          "block": "0x1e04",
+          "type": "handler mapping existence check",
+          "strength": "HIGH",
+          "reason": "Repeated non-zero existence check on _resourceIDToHandlerAddress further confirms dynamic resource support validation."
+        }
+      ],
+      "reason": "A dynamic resourceID/handler route is present and is explicitly validated through non-zero mapping lookup before use."
+    },
+    "P3_EXTERNAL_TARGET_VALIDATION": {
+      "applicability": "APPLICABLE",
+      "status": "SATISFIED",
+      "evidence": [
+        {
+          "block": "0x1d65",
+          "type": "external target non-zero/trusted binding",
+          "strength": "HIGH",
+          "reason": "The external handler target is obtained from _resourceIDToHandlerAddress and required to be non-zero; this is a trusted configuration binding for the call target."
+        },
+        {
+          "block": "0x1e04",
+          "type": "external target non-zero/trusted binding",
+          "strength": "HIGH",
+          "reason": "Another existence check on the handler mapping reinforces that the dynamic external target is validated before call."
+        },
+        {
+          "block": "0x1e1d",
+          "type": "external call success check",
+          "strength": "LOW",
+          "reason": "Call success is checked, which supports but does not by itself satisfy target validation."
+        }
+      ],
+      "reason": "The apparent dynamic handler call target is validated via non-zero mapping-based trusted configuration before the external call."
+    }
+  },
+  "coverage": "PARTIAL",
+  "limitations": [
+    "No direct TAC evidence shows ETH being escrowed, locked, or otherwise committed on this path.",
+    "The exact meaning of the calldata amount term in the fee equations is not fully recoverable from the provided guards alone.",
+    "No explicit code-existence check for the handler target is shown; validation is inferred from trusted non-zero mapping binding."
+  ],
+  "reason": "The path clearly validates fee/value inputs and resourceID-to-handler support/target bindings, but the provided evidence is insufficient to prove the core deposit/lock success semantics for ETH."
+}
+
+====================================================================================================
+🏁 扫描完成。共分析了 2 条路径。
+====================================================================================================
+🏁 扫描完成。共分析了 0 条路径。

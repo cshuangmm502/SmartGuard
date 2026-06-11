@@ -1,0 +1,181 @@
+====================================================================================================
+Begin analyzing the security of the source chain's deposit/lock operation call path.
+High level function call path: ['__function_selector__', 'deposit(address,address,uint256,string)']
+Tac level call paths: 0x0 -> 0xe2 -> 0x1ec99
+Check blocks traversed in the path: []
+
+checks_block_info:
+source_path_check_analysis_result:
+{
+  "path_role": "SOURCE",
+  "checks": {
+    "P1_DEPOSIT_SUCCESS": {
+      "applicability": "APPLICABLE",
+      "status": "UNKNOWN",
+      "evidence": [],
+      "reason": "A source-side deposit path normally requires an asset lock/burn/transfer-out confirmation, but no guard, call, or state-update evidence is provided to show the deposit semantics."
+    },
+    "P2_ARGUMENT_VALIDATION": {
+      "applicability": "APPLICABLE",
+      "status": "UNKNOWN",
+      "evidence": [],
+      "reason": "The function takes user-controlled arguments (address,address,uint256,string), so validation is relevant, but no branch predicates or checks are available."
+    },
+    "P3_SUPPORT_VALIDATION": {
+      "applicability": "UNCERTAIN",
+      "status": "UNKNOWN",
+      "evidence": [],
+      "reason": "Support validation would matter if dynamic token/chain/router/resource inputs are used, but the provided evidence does not reveal whether such routing/support checks exist."
+    },
+    "P3_EXTERNAL_TARGET_VALIDATION": {
+      "applicability": "UNCERTAIN",
+      "status": "UNKNOWN",
+      "evidence": [],
+      "reason": "External target validation is only required if the path uses a dynamic external target such as a token/router/handler address; no such call evidence is provided."
+    }
+  },
+  "coverage": "WEAK",
+  "limitations": [
+    "No dominating guard blocks or branch predicates were provided.",
+    "No external call trace was provided.",
+    "No state-update trace was provided.",
+    "Function signature alone is insufficient to prove deposit, validation, support, or external-target checks."
+  ],
+  "reason": "The path is a source-side deposit entrypoint, but the evidence set is empty beyond the function signature, so all substantive obligations remain unknown except that argument validation and deposit success are generally applicable."
+}
+
+====================================================================================================
+🏁 扫描完成。共分析了 1 条路径。
+====================================================================================================
+Begin analyzing the security of the target chain's withdrawal operation call path.
+High level function call path: ['__function_selector__', 'transferOut(address,address,uint256,string)']
+Tac level call paths: 0x0 -> 0x11b -> 0x1ed140x11b
+Check blocks traversed in the path: []
+
+checks_block_info:
+destination_path_check_analysis_result:
+{
+  "path_role": "DESTINATION",
+  "checks": {
+    "P3_SUPPORT_VALIDATION": {
+      "applicability": "UNCERTAIN",
+      "status": "UNKNOWN",
+      "evidence": [],
+      "reason": "No guard predicates or routing-validation evidence are provided for dynamic token/router/handler support checks on this destination-side transferOut path."
+    },
+    "P3_EXTERNAL_TARGET_VALIDATION": {
+      "applicability": "UNCERTAIN",
+      "status": "UNKNOWN",
+      "evidence": [],
+      "reason": "The path may involve dynamic external token targets, but no target-validation guards, nonzero checks, whitelist checks, or contract-existence evidence are available."
+    },
+    "P4_AUTHORIZATION_VERIFICATION": {
+      "applicability": "APPLICABLE",
+      "status": "MISSING",
+      "evidence": [],
+      "reason": "For a destination-side release/unlock-style transferOut path, cross-chain authorization is required, but no signature/proof/validator/trusted-caller checks are provided."
+    },
+    "P5_REPETITIVENESS_PROTECTION": {
+      "applicability": "APPLICABLE",
+      "status": "MISSING",
+      "evidence": [],
+      "reason": "Destination-side withdrawal or release paths normally require replay protection, yet no processed/claimed/executed record checks or state writebacks are shown."
+    },
+    "P6_RELEASE_CORRECTNESS": {
+      "applicability": "UNCERTAIN",
+      "status": "UNKNOWN",
+      "evidence": [],
+      "reason": "A receiver is likely present in transferOut(address,address,uint256,string), but no receiver-flow, zero-address guard, or binding to verified message data is provided."
+    }
+  },
+  "coverage": "WEAK",
+  "limitations": [
+    "No guard blocks or branch predicates were provided.",
+    "No external-call validation evidence was provided.",
+    "No verification operations were provided.",
+    "No state writebacks were provided.",
+    "No receiver-flow evidence was provided."
+  ],
+  "reason": "The provided TAC evidence is essentially empty for this destination-side transferOut path, so only the generally required authorization and replay-protection obligations can be flagged as missing; the remaining obligations are unknown due to insufficient path details."
+}
+
+====================================================================================================
+Begin analyzing the security of the target chain's withdrawal operation call path.
+High level function call path: ['__function_selector__', '0x48f1651d']
+Tac level call paths: 0x0 -> 0x108 -> 0x1ed140x5afB0x116
+Check blocks traversed in the path: ['0x1161B0xfa3B0x101eB0x7c40x5afB0x116', '0x6830x5afB0x116', '0x1179B0xfa3B0x101eB0x7c40x5afB0x116', '0x606B0x116', '0x5deB0x116', '0x5b2B0x116', '0x632B0x116', '0x5bcB0x116']
+
+checks_block_info:
+check block 0x1161B0xfa3B0x101eB0x7c40x5afB0x116 业务约束逻辑: [Memory_Variable/Array_Length LT Computed_Value],驱动此判断的数据源: CALLPRIVATE, 
+check block 0x6830x5afB0x116 业务约束逻辑: [Boolean Check on: Memory_Variable/Array_Length],驱动此判断的数据源: CALLPRIVATE, 
+check block 0x1179B0xfa3B0x101eB0x7c40x5afB0x116 业务约束逻辑: [Memory_Variable/Array_Length GT Computed_Value],驱动此判断的数据源: CALLPRIVATE, 
+check block 0x606B0x116 业务约束逻辑: [Memory_Variable/Array_Length LT Computed_Value],驱动此判断的数据源: CALLPRIVATE, 
+check block 0x5deB0x116 业务约束逻辑: [Memory_Variable/Array_Length LT Computed_Value],驱动此判断的数据源: CALLPRIVATE, 
+check block 0x5b2B0x116 业务约束逻辑: [Memory_Variable/Array_Length LT Computed_Value],驱动此判断的数据源: CALLPRIVATE, 
+check block 0x632B0x116 业务约束逻辑: [Memory_Variable/Array_Length LT Computed_Value],驱动此判断的数据源: CALLPRIVATE, 
+check block 0x5bcB0x116 业务约束逻辑: [Memory_Variable/Array_Length LT Computed_Value],驱动此判断的数据源: CALLPRIVATE, 
+destination_path_check_analysis_result:
+{
+  "path_role": "DESTINATION",
+  "checks": {
+    "P3_SUPPORT_VALIDATION": {
+      "applicability": "UNCERTAIN",
+      "status": "UNKNOWN",
+      "evidence": [
+        {
+          "block": "0x1161B0xfa3B0x101eB0x7c40x5afB0x116",
+          "type": "array-length-bound-check",
+          "strength": "LOW",
+          "reason": "Dominating guard checks memory array length from a private call result, but does not identify any chain/router/token/resource whitelist or mapping binding."
+        },
+        {
+          "block": "0x6830x5afB0x116",
+          "type": "array-length-nonempty-check",
+          "strength": "LOW",
+          "reason": "Boolean check on returned memory array length suggests structural validation only, not explicit support-list validation."
+        },
+        {
+          "block": "0x1179B0xfa3B0x101eB0x7c40x5afB0x116",
+          "type": "array-length-bound-check",
+          "strength": "LOW",
+          "reason": "Guard constrains returned array length, but available TAC does not link it to supported dynamic routing inputs."
+        }
+      ],
+      "reason": "Only generic memory-length guards are visible. They may reflect decoding or structural checks, but there is no explicit whitelist, supported-list, mapping-existence, or trusted binding evidence for dynamic routing inputs."
+    },
+    "P3_EXTERNAL_TARGET_VALIDATION": {
+      "applicability": "UNCERTAIN",
+      "status": "UNKNOWN",
+      "evidence": [],
+      "reason": "No external target flow, nonzero-address check, contract-code validation, whitelist, or trusted target binding is provided in the evidence."
+    },
+    "P4_AUTHORIZATION_VERIFICATION": {
+      "applicability": "APPLICABLE",
+      "status": "UNKNOWN",
+      "evidence": [],
+      "reason": "A destination-side bridge execution path normally requires cross-chain authorization, but no signature/proof/validator/relayer/trusted-caller evidence is present in the provided guards."
+    },
+    "P5_REPETITIVENESS_PROTECTION": {
+      "applicability": "APPLICABLE",
+      "status": "UNKNOWN",
+      "evidence": [],
+      "reason": "Replay protection is generally required for destination-side withdrawal or execution, but no processed-record check or writeback evidence is available."
+    },
+    "P6_RELEASE_CORRECTNESS": {
+      "applicability": "UNCERTAIN",
+      "status": "UNKNOWN",
+      "evidence": [],
+      "reason": "Receiver flow is not provided. Without receiver data flow or zero-address/binding checks, release correctness cannot be assessed."
+    }
+  },
+  "coverage": "WEAK",
+  "limitations": [
+    "Provided guards only show memory array length comparisons sourced from CALLPRIVATE.",
+    "No external call targets, verification operations, state writebacks, or receiver flows were supplied.",
+    "No revert strings or decoded semantic variable names link the guards to bridge-specific validation."
+  ],
+  "reason": "The evidence is limited to generic array-length guards and does not expose the key authorization, replay-protection, support-validation, or receiver-binding logic needed to classify the destination-side path with confidence."
+}
+
+====================================================================================================
+🏁 扫描完成。共分析了 2 条路径。

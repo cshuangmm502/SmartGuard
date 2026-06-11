@@ -1,155 +1,184 @@
 ====================================================================================================
-func_path: ['0x0', '0x419']
-suffered check blocks: ['0x0', '0x11b0', '0x99d', '0x60b', '0xd4b']
+Begin analyzing the security of the source chain's deposit/lock operation call path.
+High level function call path: ['__function_selector__', 'Swapin(bytes32,address,uint256)']
+Tac level call paths: 0x0 -> 0x419 -> 0xa06
+Check blocks traversed in the path: ['0x0', '0x99d', '0xd4b', '0x11b0', '0x60b']
 
 checks_block_info:
 check block 0x0 业务约束逻辑: [Existence/Non-Zero Check on: msg.value],驱动此判断的数据源: CALLVALUE, 
-check block 0x11b0 基于后续逻辑提取的错误处理信息：ERC20: mint to the zero address 
-check block 0x99d 业务约束逻辑: [Computed_Value EQ msg.sender],驱动此判断的数据源: CALLER, CALLPRIVATE,
+check block 0x99d 业务约束逻辑: [Computed_Value EQ msg.sender],驱动此判断的数据源: CALLPRIVATE, CALLER,
 基于后续逻辑提取的错误处理信息：only owner 
-check block 0x60b 业务约束逻辑: [Storage[uint256 stor_7] LT Computed_Value],驱动此判断的数据源: SLOAD, 
 check block 0xd4b 基于后续逻辑提取的错误处理信息：SafeMath: addition overflow 
-
-support_check_analysis_result:
+check block 0x11b0 基于后续逻辑提取的错误处理信息：ERC20: mint to the zero address 
+check block 0x60b 业务约束逻辑: [Storage[uint256 stor_7] LT Computed_Value],驱动此判断的数据源: SLOAD, 
+source_path_check_analysis_result:
 {
-  "semantic_supportness_check": "NO",
-  "confidence": "HIGH",
-  "supportness_evidence": [],
-  "non_support_guards": [
-    {
-      "block": "0x0",
-      "type": "PAYMENT",
-      "reason": "msg.value non-zero/existence check is a payment/business constraint, not supportness validation"
+  "path_role": "SOURCE",
+  "checks": {
+    "P1_DEPOSIT_SUCCESS": {
+      "applicability": "APPLICABLE",
+      "status": "SATISFIED",
+      "evidence": [
+        {
+          "block": "0x11b0",
+          "type": "mint zero-address revert evidence",
+          "strength": "HIGH",
+          "reason": "Revert string 'ERC20: mint to the zero address' indicates this path performs an ERC20 mint, which is a clear asset-operation semantics for swap-in."
+        },
+        {
+          "block": "0xd4b",
+          "type": "arithmetic safety on mint amount",
+          "strength": "LOW",
+          "reason": "SafeMath addition overflow revert supports that token supply/balance arithmetic is involved, consistent with mint processing."
+        }
+      ],
+      "reason": "The function is Swapin and the revert evidence explicitly shows an ERC20 mint operation, which satisfies the source-side asset commitment requirement for this path."
     },
-    {
-      "block": "0x11b0",
-      "type": "BUSINESS_CONSTRAINT",
-      "reason": "zero-address mint check validates recipient address safety, not chain/resource/token support list"
+    "P2_ARGUMENT_VALIDATION": {
+      "applicability": "APPLICABLE",
+      "status": "SATISFIED",
+      "evidence": [
+        {
+          "block": "0x99d",
+          "type": "caller validation",
+          "strength": "HIGH",
+          "reason": "Predicate equates a computed privileged value with msg.sender and has revert reason 'only owner', validating the sensitive caller."
+        },
+        {
+          "block": "0x0",
+          "type": "msg.value non-zero check",
+          "strength": "MEDIUM",
+          "reason": "Existence/non-zero check on msg.value validates a user-controlled input before proceeding."
+        },
+        {
+          "block": "0x60b",
+          "type": "amount/range style storage comparison",
+          "strength": "LOW",
+          "reason": "Storage less-than computed value suggests an additional bound check, though exact semantics are unclear."
+        }
+      ],
+      "reason": "Sensitive inputs are guarded at least by an owner-only caller check, and additional value/range checks are present."
     },
-    {
-      "block": "0x99d",
-      "type": "AUTHORIZATION",
-      "reason": "msg.sender compared against computed owner value with 'only owner' error indicates authorization check"
+    "P3_SUPPORT_VALIDATION": {
+      "applicability": "UNCERTAIN",
+      "status": "UNKNOWN",
+      "evidence": [],
+      "reason": "No explicit whitelist, supported-token, chain/domain, or mapping-existence validation is shown in the provided guards; dynamic support inputs are not clearly exposed from the evidence."
     },
-    {
-      "block": "0x60b",
-      "type": "UNKNOWN_STORAGE",
-      "reason": "Storage[stor_7] < computed value is an unnamed generic storage comparison; no recovered semantic indicator of supportness mapping/list"
-    },
-    {
-      "block": "0xd4b",
-      "type": "BUSINESS_CONSTRAINT",
-      "reason": "SafeMath addition overflow is arithmetic safety, not supportness validation"
+    "P3_EXTERNAL_TARGET_VALIDATION": {
+      "applicability": "NOT_APPLICABLE",
+      "status": "NOT_APPLICABLE",
+      "evidence": [],
+      "reason": "No dynamic external call target appears on this path and no external calls are provided."
     }
+  },
+  "coverage": "PARTIAL",
+  "limitations": [
+    "Only dominating guard predicates and extracted revert strings were provided.",
+    "No bridge event, full TAC operations, or state-update details were provided.",
+    "Support-validation semantics for token/chain/resource inputs cannot be confirmed from unknown storage names alone."
   ],
-  "reason": "No guard block shows a recovered supportness variable or a clear chain/resource/token/router/record support validation. The observed guards are payment, authorization, arithmetic, zero-address safety, and an unnamed generic storage comparison."
+  "reason": "This Swapin source-side path is strongly indicative of a privileged ERC20 mint flow with caller validation, but evidence is insufficient to confirm any dynamic support-list validation."
 }
 
 ====================================================================================================
 🏁 扫描完成。共分析了 1 条路径。
 ====================================================================================================
-func_path: ['0x0', '0x318']
-suffered check blocks: ['0x0', '0x102c', '0x10ae', '0xf05', '0xdaf', '0xcb1', '0x1018']
+Begin analyzing the security of the target chain's withdrawal operation call path.
+High level function call path: ['__function_selector__', 'Swapout(uint256,string)']
+Tac level call paths: 0x0 -> 0x318 -> 0x7e2
+Check blocks traversed in the path: ['0x0', '0xcb1', '0x1018', '0xdaf', '0x10ae', '0xf05', '0x102c']
 
 checks_block_info:
 check block 0x0 业务约束逻辑: [Existence/Non-Zero Check on: msg.value],驱动此判断的数据源: CALLVALUE, 
-check block 0x102c 基于后续逻辑提取的错误处理信息：segwit address length is not 43 or 63 
+check block 0xcb1 基于后续逻辑提取的错误处理信息：there exists a revert operation, but cant infer its error information 
+check block 0x1018 基于后续逻辑提取的错误处理信息：unsupported address leading symbol 
+check block 0xdaf 基于后续逻辑提取的错误处理信息：address length is too short 
 check block 0x10ae 业务约束逻辑: [Existence/Non-Zero Check on: msg.sender],驱动此判断的数据源: CALLER,
 基于后续逻辑提取的错误处理信息：ERC20: burn from the zero address 
 check block 0xf05 基于后续逻辑提取的错误处理信息：mainnet address length is too long 
-check block 0xdaf 基于后续逻辑提取的错误处理信息：address length is too short 
-check block 0xcb1 基于后续逻辑提取的错误处理信息：there exists a revert operation, but cant infer its error information 
-check block 0x1018 基于后续逻辑提取的错误处理信息：unsupported address leading symbol 
-repeat_check_analysis_result:
+check block 0x102c 基于后续逻辑提取的错误处理信息：segwit address length is not 43 or 63 
+destination_path_check_analysis_result:
 {
-  "semantic_repetitiveness_check": "NO",
-  "confidence": "HIGH",
-  "repetitiveness_evidence": [],
-  "non_repetitiveness_guards": [
-    {
-      "block": "0x0",
-      "type": "PAYMENT",
-      "reason": "Checks msg.value non-zero/existence; payment constraint, not duplicate/replay prevention"
+  "path_role": "DESTINATION",
+  "checks": {
+    "P3_SUPPORT_VALIDATION": {
+      "applicability": "UNCERTAIN",
+      "status": "UNKNOWN",
+      "evidence": [
+        {
+          "block": "0xdaf",
+          "type": "address-format validation",
+          "strength": "LOW",
+          "reason": "Revert reason 'unsupported address leading symbol' shows destination address string format checks."
+        },
+        {
+          "block": "0xf05",
+          "type": "address-length validation",
+          "strength": "LOW",
+          "reason": "Revert reason 'mainnet address length is too long' shows destination address string constraints."
+        },
+        {
+          "block": "0x102c",
+          "type": "address-length validation",
+          "strength": "LOW",
+          "reason": "Revert reason 'segwit address length is not 43 or 63' shows destination address string constraints."
+        },
+        {
+          "block": "0xcb1",
+          "type": "address-length validation",
+          "strength": "LOW",
+          "reason": "Revert reason 'address length is too short' shows input address formatting checks."
+        }
+      ],
+      "reason": "The path validates a destination address string format, but no whitelist, supported-list, mapping-existence, or trusted binding for dynamic chain/domain/token/router/handler inputs is shown."
     },
-    {
-      "block": "0x10ae",
-      "type": "AUTHORIZATION",
-      "reason": "Checks msg.sender/non-zero caller context; caller-related check is not a repetitiveness guard"
+    "P3_EXTERNAL_TARGET_VALIDATION": {
+      "applicability": "NOT_APPLICABLE",
+      "status": "NOT_APPLICABLE",
+      "evidence": [],
+      "reason": "No dynamic external-call target is evidenced on this path, and no external calls are provided."
     },
-    {
-      "block": "0x102c",
-      "type": "BUSINESS_CONSTRAINT",
-      "reason": "Segwit address length validation only"
+    "P4_AUTHORIZATION_VERIFICATION": {
+      "applicability": "UNCERTAIN",
+      "status": "UNKNOWN",
+      "evidence": [
+        {
+          "block": "0x10ae",
+          "type": "non-zero sender check",
+          "strength": "LOW",
+          "reason": "There is a msg.sender non-zero guard, but this is not trusted bridge/relayer/signer authorization."
+        }
+      ],
+      "reason": "No signature verification, proof verification, validator threshold, or trusted bridge-caller authorization appears in the evidence."
     },
-    {
-      "block": "0xf05",
-      "type": "BUSINESS_CONSTRAINT",
-      "reason": "Mainnet address length too long validation only"
+    "P5_REPETITIVENESS_PROTECTION": {
+      "applicability": "UNCERTAIN",
+      "status": "UNKNOWN",
+      "evidence": [],
+      "reason": "No processed/claimed/executed record check or write-back is provided, but the available TAC evidence is too limited to conclude replay protection is missing."
     },
-    {
-      "block": "0xdaf",
-      "type": "BUSINESS_CONSTRAINT",
-      "reason": "Address length too short validation only"
-    },
-    {
-      "block": "0xcb1",
-      "type": "OTHER",
-      "reason": "Generic revert present but no processed/nonce/deposit/vote record guard identified"
-    },
-    {
-      "block": "0x1018",
-      "type": "BUSINESS_CONSTRAINT",
-      "reason": "Unsupported address leading symbol validation only"
+    "P6_RELEASE_CORRECTNESS": {
+      "applicability": "NOT_APPLICABLE",
+      "status": "NOT_APPLICABLE",
+      "evidence": [
+        {
+          "block": "0xdaf",
+          "type": "receiver-format validation",
+          "strength": "MEDIUM",
+          "reason": "Destination address string receives syntax validation rather than on-chain asset receiver release checks."
+        }
+      ],
+      "reason": "This path is a swap-out style function with destination address string validation, not a destination-side asset release to an on-chain receiver."
     }
+  },
+  "coverage": "WEAK",
+  "limitations": [
+    "Function path names indicate 'Swapout(uint256,string)', which looks source-side despite requested destination-side classification.",
+    "No external calls, verification operations, state write-backs, or receiver flows were provided.",
+    "Several guards only expose revert strings for address formatting and do not reveal storage-backed authorization or replay logic."
   ],
-  "reason": "The listed guards are payment, caller, and address-format/business validations. No guard references hasVotedOnProposal, depositRecords, nonces, or any processed/executed/claimed/used/completed record that would prevent repeated or replayed operations."
-}
-
-signature_check_analysis_result:
-{
-  "knowledge_base_match": "NO",
-  "semantic_signature_check": "NO",
-  "is_path_relevant": true,
-  "confidence": "HIGH",
-  "signature_evidence": [],
-  "non_signature_guards": [
-    {
-      "block": "0x0",
-      "type": "OTHER",
-      "reason": "Checks msg.value non-zero existence; payment/value constraint, not signature verification"
-    },
-    {
-      "block": "0x102c",
-      "type": "OTHER",
-      "reason": "Segwit address length validation; input-format check, not signer or signature validation"
-    },
-    {
-      "block": "0x10ae",
-      "type": "CALLER_AUTHORIZATION",
-      "reason": "Checks msg.sender non-zero for ERC20 burn zero-address protection; ordinary caller/address sanity check, not signer authorization semantics"
-    },
-    {
-      "block": "0xf05",
-      "type": "OTHER",
-      "reason": "Mainnet address length upper-bound validation; input-format check only"
-    },
-    {
-      "block": "0xdaf",
-      "type": "OTHER",
-      "reason": "Address length lower-bound validation; input-format check only"
-    },
-    {
-      "block": "0xcb1",
-      "type": "OTHER",
-      "reason": "Generic revert detected without inferred auth semantics; insufficient evidence for signature check"
-    },
-    {
-      "block": "0x1018",
-      "type": "OTHER",
-      "reason": "Unsupported address leading symbol validation; input-format/routing check, not cryptographic authorization"
-    }
-  ],
-  "reason": "The guards only show value presence, caller/address non-zero checks, address format/length validation, and generic revert behavior. There is no evidence of cryptographic verification, recovered signer validation, relayer/validator authorization, threshold approval, expiry enforcement, or message binding. Therefore this path is not protected by a semantic SIGNATURE_CHECK."
+  "reason": "Evidence mainly shows input amount/value and destination address string format checks. It does not clearly show support-list validation, cross-chain authorization, replay protection, or destination-side release semantics."
 }
 
 ====================================================================================================

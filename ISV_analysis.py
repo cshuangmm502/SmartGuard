@@ -8,6 +8,8 @@ import itertools
 # 1.比较不同调用路径的支配块数量
 # 2.检查deposit_event，informing_event与实际行为的一致性
 def ISV_analysis(artifacts_path, emitting_functions, df_opcodes, df_uses, df_defines, df_formalArgs):
+    LOG_FILE = artifacts_path / "output_debug" / "ISV_analysis.txt"
+
     print(f"\n=======================================================")
     print(f"🎯 开始进行源链行为差异分析 ")
     print(f"=======================================================")
@@ -17,8 +19,17 @@ def ISV_analysis(artifacts_path, emitting_functions, df_opcodes, df_uses, df_def
 
     confused_results = source_divergence_analysis(emitting_functions)
     if len(confused_results) == 0:
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write("=" * 100 + "\n")
+            f.write(f"Begin analyzing the source divergence.\n")
+            f.write(f"[*] Analysis complete, there is no divergence behavior in source chain that causes confusion.\n")
         print("[*] 分析完成，源链行为不存在差异性混淆")
     else:
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write("=" * 100 + "\n")
+            f.write(f"Begin analyzing the source divergence.\n")
+            f.write(f"[*] Analysis complete, there are divergence behaviors in source chain that causes confusion.\n")
+            f.write(str(confused_results))
         print("[*] 分析完成，源链行为存在差异性混淆")
         print(confused_results)
 
@@ -28,6 +39,12 @@ def ISV_analysis(artifacts_path, emitting_functions, df_opcodes, df_uses, df_def
     # print(emitting_functions)
     sd_results = settlement_dependency_analysis(emitting_functions, df_uses, df_defines, df_opcodes, df_formalArgs)
     print(sd_results)
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        f.write("=" * 100 + "\n")
+        f.write(f"Begin analyzing the settlement dependency analysis.\n")
+        f.write(f"[*] Analysis complete, results as follows.\n")
+        f.write(str(sd_results))
+
 
     # results = extract_log_direct_args("0x848", df_opcodes, df_uses)
     # print(results)

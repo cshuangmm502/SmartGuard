@@ -1,0 +1,5 @@
+{
+    "Deposit(address,address,uint256,string)": "DEPOSIT",
+    "TransferOut(address,address,address,uint256,string)": "WITHDRAWAL",
+    "VaultTransfer(address,address,(address,uint256)[],string)": "OTHER"
+}
